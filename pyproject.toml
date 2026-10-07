@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "docpipe"
+version = "0.1.0"
+description = "Конвейер восстановления документов из сканов"
+requires-python = ">=3.10"
+dependencies = [
+  "pydantic==2.13.4",
+  "pydantic-settings==2.14.1",
+  "PyYAML==6.0.3",
+  "fastapi==0.128.2",
+  "uvicorn==0.48.0",
+  "python-multipart==0.0.20",
+  "pypdfium2==5.13.0",
+  "pikepdf==10.16.0",
+  "reportlab==4.4.9",
+  "img2pdf==0.6.3",
+  "Pillow==12.3.0",
+  "numpy==2.3.5",
+  "python-docx==1.2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.0.2", "ruff==0.14.2", "mypy==1.18.2"]
+docling = ["docling"]
+paddle = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
+vl = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
+pdf = ["weasyprint==68.0"]
+
+[project.scripts]
+docpipe = "docpipe.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+markers = [
+  "engine_docling: тесты реального Docling",
+  "engine_ppstructure: тесты реального PaddleOCR PPStructure",
+  "engine_paddleocr_vl: тесты PaddleOCR-VL",
+]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+strict = true
+files = ["src/docpipe/ir.py", "src/docpipe/config.py"]

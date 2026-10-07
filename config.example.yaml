@@ -1,0 +1,30 @@
+# Допущение Фазы 0: GPU определяется автоматически; численная цель latency не задаётся до baseline.
+force_ocr: auto
+default_dpi: 300
+profile: balanced
+gpu: null
+offline: true
+limits:
+  max_file_mb: 200
+  max_pages: 300
+  max_pixels_per_page: 40000000
+  max_dimension_px: 12000
+text_layer:
+  expected_scripts: [cyrillic, latin]
+  min_text_length: 20
+  min_expected_script_ratio: 0.35
+  max_control_ratio: 0.05
+  max_replacement_ratio: 0.01
+  max_mixed_script_word_ratio: 0.25
+figures:
+  padding_px: 8
+  merge_iou: 0.2
+  min_width_px: 32
+  min_height_px: 32
+  min_area_ratio: 0.001
+  table_fallback_to_figure: true
+render:
+  include_page_markers: true
+  headers_footers: drop
+  positional: false
+debug: false

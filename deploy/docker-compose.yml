@@ -1,0 +1,18 @@
+services:
+  docpipe:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DOCPIPE_OFFLINE: "true"
+      DOCPIPE_API__DEFAULT_ENGINE: "fake"
+      DOCPIPE_API__WORKERS: "1"
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - docpipe_jobs:/app/data/jobs
+volumes:
+  docpipe_jobs:

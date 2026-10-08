@@ -8,22 +8,15 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 from docpipe.ir import Document
+from docpipe.renderers.fonts import require_font
 
 
 def _font_name() -> str:
-    candidates = [
-	Path("D:/AI/fonts/dejavu/dejavu-fonts-ttf-2.37/ttf/DejaVuSans.ttf"),
-        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-        Path("/usr/share/fonts/dejavu/DejaVuSans.ttf"),
-        Path("C:/Windows/Fonts/DejaVuSans.ttf"),
-    ]
-    for path in candidates:
-        if path.exists():
-            name = "DocpipeOverlayDejaVu"
-            if name not in pdfmetrics.getRegisteredFontNames():
-                pdfmetrics.registerFont(TTFont(name, str(path)))
-            return name
-    raise RuntimeError("Не найден свободный шрифт DejaVu Sans для невидимого слоя")
+    path = require_font()
+    name = "DocpipeOverlay"
+    if name not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont(name, str(path)))
+    return name
 
 
 def _make_overlay(document: Document, page_index: int, width: float, height: float) -> bytes:

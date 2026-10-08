@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import json
+import hmac
 import queue
-import shutil
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from contextlib import asynccontextmanager
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 
 from docpipe.api.jobs import JobManager
 from docpipe.config import AppConfig
+
+_ALLOWED_ENGINES = {"fake", "docling", "ppstructure", "paddleocr_vl"}
+_ALLOWED_OUTPUTS = {"json", "md", "html", "pdf-flow", "pdf-searchable", "pdf-positional", "docx"}
 
 
 def create_app(config: AppConfig | None = None) -> FastAPI:
@@ -29,8 +32,15 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.state.manager = manager
     app.state.config = cfg
 
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def user_interface() -> FileResponse:
+        return FileResponse(
+            Path(__file__).with_name("static") / "index.html",
+            media_type="text/html; charset=utf-8",
+        )
+
     def authorize(api_key: str | None) -> None:
-        if cfg.api.api_key and api_key != cfg.api.api_key:
+        if cfg.api.api_key and not hmac.compare_digest(api_key or "", cfg.api.api_key):
             raise HTTPException(status_code=401, detail="Неверный API-ключ")
 
     def parse_options(raw: str | None) -> dict:
@@ -51,6 +61,23 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             raise HTTPException(status_code=415, detail="Неподдерживаемый формат входного файла")
         return name
 
+    def validate_job_options(opts: dict) -> tuple[str, list[str]]:
+        engine = str(opts.get("engine", cfg.api.default_engine))
+        if engine not in _ALLOWED_ENGINES:
+            raise HTTPException(status_code=400, detail="unknown engine")
+        if engine == "fake" and cfg.api.default_engine != "fake":
+            raise HTTPException(
+                status_code=400,
+                detail="fake engine is disabled; configure it as the service default only for development or tests",
+            )
+        outputs = opts.get("outputs", ["md", "html", "json"])
+        if not isinstance(outputs, list) or not all(isinstance(item, str) for item in outputs):
+            raise HTTPException(status_code=400, detail="outputs must be a list of strings")
+        unsupported = sorted(set(outputs) - _ALLOWED_OUTPUTS)
+        if unsupported:
+            raise HTTPException(status_code=400, detail=f"unsupported outputs: {unsupported}")
+        return engine, outputs
+
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
@@ -62,7 +89,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         return {"status": "ready"}
 
     @app.get("/metrics")
-    def metrics() -> PlainTextResponse:
+    def metrics(x_api_key: str | None = Header(default=None)) -> PlainTextResponse:
+        authorize(x_api_key)
         lines = ["# TYPE docpipe_jobs_total counter"]
         for name, value in manager.metrics.items():
             lines.append(f"docpipe_{name} {value}")
@@ -83,6 +111,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         outputs = opts.get("outputs", ["md", "html", "json"])
         if not isinstance(outputs, list) or not all(isinstance(x, str) for x in outputs):
             raise HTTPException(status_code=400, detail="outputs должен быть списком строк")
+        engine, outputs = validate_job_options(opts)
         tmp_root = cfg.api.work_dir / "uploads"
         tmp_root.mkdir(exist_ok=True)
         upload_path = tmp_root / f"{__import__('uuid').uuid4().hex}_{name}"
@@ -94,6 +123,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
                     if size > cfg.limits.max_file_mb * 1024 * 1024:
                         raise HTTPException(status_code=413, detail="Файл превышает лимит размера")
                     dst.write(chunk)
+            if size == 0:
+                raise HTTPException(status_code=400, detail="uploaded file is empty")
             try:
                 job = manager.submit(upload_path, engine, outputs)
             except queue.Full as exc:
@@ -139,7 +170,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         return FileResponse(target)
 
     @app.post("/v1/parse")
-    async def parse_sync(
+    def parse_sync(
         file: UploadFile = File(...),
         options: str | None = Form(default=None),
         x_api_key: str | None = Header(default=None),
@@ -150,18 +181,35 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail="Синхронный режим отключён")
         # Синхронный endpoint использует ту же очередь и ждёт завершения.
         name = validate_upload(file)
+        engine, outputs = validate_job_options(opts)
         tmp_root = cfg.api.work_dir / "sync"
         tmp_root.mkdir(exist_ok=True)
         path = tmp_root / f"{__import__('uuid').uuid4().hex}_{name}"
-        with path.open("wb") as dst:
-            shutil.copyfileobj(file.file, dst)
+        size = 0
+        try:
+            with path.open("wb") as dst:
+                while chunk := file.file.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > cfg.limits.max_file_mb * 1024 * 1024:
+                        raise HTTPException(status_code=413, detail="upload exceeds configured size limit")
+                    dst.write(chunk)
+        except Exception:
+            path.unlink(missing_ok=True)
+            raise
+        if size == 0:
+            path.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail="uploaded file is empty")
+        job = None
         try:
             import pypdfium2 as pdfium
             suffix = path.suffix.lower()
             page_count = 1
             if suffix == ".pdf":
-                with pdfium.PdfDocument(str(path)) as pdf:
-                    page_count = len(pdf)
+                try:
+                    with pdfium.PdfDocument(str(path)) as pdf:
+                        page_count = len(pdf)
+                except Exception as exc:
+                    raise HTTPException(status_code=422, detail="uploaded PDF is invalid") from exc
             if page_count > cfg.api.sync_max_pages:
                 raise HTTPException(status_code=413, detail="Документ превышает лимит синхронного API")
             engine = str(opts.get("engine", cfg.api.default_engine))
@@ -178,11 +226,16 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
                 raise HTTPException(status_code=504, detail=job.error or "Обработка не завершилась вовремя")
             return FileResponse(job.result_zip, media_type="application/zip", filename=f"{job.id}.zip")
         finally:
-            path.unlink(missing_ok=True)
+            # A timed-out request must not remove an input the worker still needs.
+            if job is None or job.status not in {"queued", "running"}:
+                path.unlink(missing_ok=True)
 
     @app.delete("/v1/jobs/{job_id}", status_code=204)
     def delete_job(job_id: str, x_api_key: str | None = Header(default=None)) -> None:
         authorize(x_api_key)
+        existing = manager.get(job_id)
+        if existing is not None and existing.status == "running":
+            raise HTTPException(status_code=409, detail="job is currently running")
         if not manager.delete(job_id):
             raise HTTPException(status_code=404, detail="Задание не найдено")
 

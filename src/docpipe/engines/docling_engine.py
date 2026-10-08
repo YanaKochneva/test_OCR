@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -31,7 +32,12 @@ class DoclingEngine(LayoutOcrEngine):
             )
 
         self.mode = mode
-        self.languages = languages or ["eslav", "en"]
+        self.languages = list(languages or ["eslav"])
+        if len(self.languages) != 1:
+            raise ValueError(
+                "RapidOCR supports one recognition language per pass; "
+                "configure exactly one language (for Russian, use 'eslav')."
+            )
 
         self.version = "unknown"
         self._converter = None
@@ -49,6 +55,7 @@ class DoclingEngine(LayoutOcrEngine):
             )
             from docling.document_converter import (
                 DocumentConverter,
+                ImageFormatOption,
                 PdfFormatOption,
             )
         except ImportError as exc:
@@ -66,10 +73,21 @@ class DoclingEngine(LayoutOcrEngine):
             RapidOcrOptions=RapidOcrOptions,
             TableStructureOptions=TableStructureOptions,
             DocumentConverter=DocumentConverter,
+            ImageFormatOption=ImageFormatOption,
             PdfFormatOption=PdfFormatOption,
         )
 
         pipeline_options = PdfPipelineOptions()
+
+        artifacts_path = os.getenv("DOCLING_ARTIFACTS_PATH")
+        if artifacts_path:
+            model_dir = Path(artifacts_path)
+            if not model_dir.is_dir():
+                raise ModelError(
+                    f"Configured Docling artifacts directory does not exist: {model_dir}"
+                )
+            if hasattr(pipeline_options, "artifacts_path"):
+                pipeline_options.artifacts_path = model_dir
 
         if self.mode == "layout_only":
             raise DependencyError(
@@ -100,12 +118,30 @@ class DoclingEngine(LayoutOcrEngine):
         format_option = PdfFormatOption(
             pipeline_options=pipeline_options
         )
+        image_format_option = ImageFormatOption(
+            pipeline_options=pipeline_options
+        )
 
         self._converter = DocumentConverter(
             format_options={
                 InputFormat.PDF: format_option,
+                # analyze_page passes rasterized PNGs, which Docling routes
+                # through IMAGE. Configure that pipeline with the same OCR
+                # language and table options as the PDF pipeline.
+                InputFormat.IMAGE: image_format_option,
             }
         )
+
+        # Load and validate model artifacts before reporting the engine ready.
+        # Docling's IMAGE pipeline is the one used by analyze_page().
+        try:
+            self._converter.initialize_pipeline(InputFormat.IMAGE)
+        except Exception as exc:
+            self._converter = None
+            raise ModelError(
+                "Docling IMAGE pipeline initialization failed; verify that "
+                "the required model artifacts are installed and accessible."
+            ) from exc
 
         self._model_info = self._discover_model_info(
             pipeline_options
@@ -466,8 +502,7 @@ class DoclingEngine(LayoutOcrEngine):
 
         return ""
 
-    @staticmethod
-    def _make_rapidocr_options(cls: Any) -> Any:
+    def _make_rapidocr_options(self, cls: Any) -> Any:
         """
         Build RapidOcrOptions while remaining compatible with
         different Docling versions.
@@ -478,7 +513,7 @@ class DoclingEngine(LayoutOcrEngine):
         kwargs: dict[str, Any] = {}
 
         if "lang" in params:
-            kwargs["lang"] = ["eslav", "en"]
+            kwargs["lang"] = self.languages
 
         if "use_gpu" in params:
             kwargs["use_gpu"] = False

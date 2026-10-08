@@ -21,11 +21,12 @@ dependencies = [
   "Pillow==12.3.0",
   "numpy==2.3.5",
   "python-docx==1.2.0",
+  "rapidfuzz==3.14.3",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest==9.0.2", "ruff==0.14.2", "mypy==1.18.2"]
-docling = ["docling"]
+docling = ["docling==2.134.0"]
 paddle = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
 vl = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
 pdf = ["weasyprint==68.0"]
@@ -38,6 +39,9 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+docpipe = ["api/static/*.html"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

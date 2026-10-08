@@ -50,10 +50,11 @@ class ApiConfig(BaseModel):
     max_jobs: int = Field(default=1000, ge=1)
     result_ttl_seconds: int = Field(default=3600, ge=60)
     work_dir: Path = Path("data/jobs")
-    default_engine: str = "fake"
+    default_engine: str = "docling"
     sync_max_pages: int = Field(default=10, ge=1)
     sync_timeout_seconds: int = Field(default=600, ge=1)
-    api_key: str | None = None
+    shutdown_timeout_seconds: int = Field(default=300, ge=1)
+    api_key: str | None = Field(default=None, min_length=32)
 
 
 class AppConfig(BaseSettings):

@@ -4,7 +4,7 @@ Production-oriented конвейер «скан → документ с карт
 
 ## Статус
 
-Реализованы **Фазы 0–5**. Реальные Docling/PaddleOCR адаптеры имеют контрактные тесты; фактический inference требует установленных пакетов и предварительно загруженных моделей.
+Реализованы OCR-конвейер, API заданий и веб-интерфейс. Production API и CLI по умолчанию используют Docling; fake-движок остаётся только для явно настроенных тестов и разработки. Готовность к промышленной эксплуатации ограничена незавершённым тестированием контейнера, безопасности и нагрузок.
 
 ### Сделано в Фазе 0
 
@@ -23,7 +23,7 @@ Production-oriented конвейер «скан → документ с карт
 python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # Linux/macOS: source .venv/bin/activate
-python -m pip install -c constraints.txt -e .
+python -m pip install -c constraints.txt -e '.[docling]'
 ```
 
 Для CPU-only потокового PDF можно использовать `pip install -e .` и extra `pdf` для WeasyPrint. OCR extras: `docpipe[docling]`, `docpipe[paddle]`.
@@ -49,4 +49,4 @@ python -m pytest -q
 
 ## Важное ограничение текущей фазы
 
-В среде исполнения сейчас нет `docling`, `paddleocr`, `pikepdf`, `img2pdf`; поэтому их API и реальные OCR-прогоны в Фазе 0 не объявляются проверенными.
+Веб-интерфейс запускается по адресу `http://localhost:8000/` вместе с API. Инструкция: `docs/USER_INTERFACE.md`. Для распознавания локально установите extra `docpipe[docling]`; Docker-образ устанавливает Docling и заранее загружает его модели.

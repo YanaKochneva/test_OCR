@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f5f1">
+  <title>DocPipe — распознавание документов</title>
+  <style>
+    :root{color-scheme:light;--ink:#17231f;--muted:#68756f;--line:#dce3de;--paper:#fff;--canvas:#f6f5f1;--green:#176b50;--green-dark:#10533e;--mint:#e5f2eb;--red:#a23c35;--amber:#8b641c}
+    *{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink);font:16px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    .topbar{height:68px;border-bottom:1px solid var(--line);background:#ffffffc9;display:flex;align-items:center}.topbar-inner{width:min(1040px,calc(100% - 40px));margin:auto;display:flex;align-items:center;justify-content:space-between}.brand{display:flex;align-items:center;gap:10px;font-weight:750;letter-spacing:-.03em}.brand-mark{width:31px;height:31px;border-radius:10px;background:var(--green);color:white;display:grid;place-items:center;font-size:17px}.local{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}.dot{width:8px;height:8px;border-radius:50%;background:#4a9b71}
+    main{width:min(760px,calc(100% - 32px));margin:55px auto 72px}.eyebrow{color:var(--green);font-size:12px;font-weight:750;letter-spacing:.13em;text-transform:uppercase}.hero h1{font-size:clamp(30px,5vw,43px);letter-spacing:-.045em;line-height:1.1;margin:12px 0}.hero p{margin:0;color:var(--muted);max-width:580px}.card{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:26px;margin-top:28px;box-shadow:0 8px 24px #193c2910}
+    .drop{min-height:190px;border:1.5px dashed #aebeb4;background:#fbfcfa;border-radius:14px;display:grid;place-items:center;text-align:center;padding:22px;transition:.15s}.drop.drag{border-color:var(--green);background:var(--mint)}.upload-icon{margin:0 auto 9px;width:43px;height:43px;border-radius:13px;background:var(--mint);color:var(--green);display:grid;place-items:center;font-size:22px}.drop strong{display:block;font-size:16px}.drop p{margin:4px 0 12px;color:var(--muted);font-size:14px}.link-button{border:0;background:none;color:var(--green);font:inherit;font-weight:700;cursor:pointer;padding:0}.file-name{display:none;margin-top:12px;padding:10px 12px;border-radius:9px;background:#f1f5f2;font-size:14px;overflow-wrap:anywhere}.field{margin-top:22px}.field-label{display:block;font-weight:700;font-size:14px;margin-bottom:9px}.key-row{display:flex;gap:9px}.key-row input{flex:1;min-width:0}.text-input{height:44px;border:1px solid var(--line);border-radius:9px;padding:0 12px;font:inherit;background:#fff;color:var(--ink);outline:none}.text-input:focus{border-color:#5c9d7e;box-shadow:0 0 0 3px #176b5015}.hint{color:var(--muted);font-size:12px;margin:7px 0 0}
+    .formats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.format{border:1px solid var(--line);border-radius:10px;padding:10px 11px;display:flex;align-items:flex-start;gap:9px;font-size:13px;cursor:pointer}.format:has(input:checked){border-color:#7bad94;background:#f2f8f4}.format input{margin:3px 0 0;accent-color:var(--green)}.format b{display:block;font-size:13px}.format small{color:var(--muted);display:block;line-height:1.35;margin-top:2px}.submit{width:100%;height:48px;margin-top:23px;border:0;border-radius:10px;background:var(--green);color:#fff;font:inherit;font-weight:750;cursor:pointer;transition:background .15s}.submit:hover{background:var(--green-dark)}.submit:disabled{opacity:.55;cursor:wait}
+    .status{display:none;margin-top:20px;border:1px solid var(--line);border-radius:12px;padding:16px;background:#fbfcfa}.status-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.status-title{font-weight:750}.status-detail{color:var(--muted);font-size:13px;margin-top:3px}.progress{height:7px;background:#e8ede9;border-radius:9px;overflow:hidden;margin-top:14px}.progress span{display:block;height:100%;width:0;background:var(--green);transition:width .3s}.message{display:none;margin-top:16px;padding:13px;border-radius:10px;font-size:14px}.message.error{display:block;background:#fbefed;color:var(--red)}.message.success{display:block;background:#edf6f0;color:var(--green-dark)}.download{display:inline-flex;margin-top:10px;color:var(--green-dark);font-weight:750;text-decoration:none}.download:hover{text-decoration:underline}.footer-note{color:var(--muted);font-size:13px;margin:18px 4px}.footer-note b{color:var(--ink)}
+    @media(max-width:600px){main{margin:35px auto 50px}.card{padding:18px}.formats{grid-template-columns:repeat(2,1fr)}.local{font-size:11px}}
+  </style>
+</head>
+<body>
+  <header class="topbar"><div class="topbar-inner"><div class="brand"><span class="brand-mark">д</span><span>docpipe</span></div><div class="local"><span class="dot"></span>Обработка на вашем сервере</div></div></header>
+  <main>
+    <section class="hero"><div class="eyebrow">Документы → текст и файлы</div><h1>Распознайте документ</h1><p>Загрузите скан или PDF. DocPipe распознает текст, соберёт результаты и подготовит их для скачивания.</p></section>
+    <form class="card" id="form">
+      <div class="drop" id="drop">
+        <div><div class="upload-icon" aria-hidden="true">↑</div><strong>Перетащите файл сюда</strong><p>PDF или изображение: PNG, JPG, TIFF, BMP, WEBP</p><button class="link-button" type="button" id="browse">Выбрать файл</button><input id="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,application/pdf,image/*" hidden></div>
+      </div>
+      <div class="file-name" id="file-name"></div>
+      <div class="field"><label class="field-label" for="api-key">Ключ доступа</label><div class="key-row"><input class="text-input" id="api-key" type="password" autocomplete="off" placeholder="Введите API-ключ сервиса" required minlength="32"><button class="text-input" type="button" id="toggle-key" aria-label="Показать ключ">Показать</button></div><p class="hint">Ключ используется только для запросов из этой вкладки и не сохраняется.</p></div>
+      <div class="field"><span class="field-label">Что подготовить</span><div class="formats">
+        <label class="format"><input type="checkbox" name="output" value="pdf-searchable" checked disabled><span><b>PDF с текстом</b><small>Обязательный результат</small></span></label>
+        <label class="format"><input type="checkbox" name="output" value="docx" checked><span><b>Word</b><small>Редактируемый DOCX</small></span></label>
+        <label class="format"><input type="checkbox" name="output" value="md" checked disabled><span><b>Markdown</b><small>Обязательный результат</small></span></label>
+        <label class="format"><input type="checkbox" name="output" value="html" checked disabled><span><b>HTML</b><small>Обязательный результат</small></span></label>
+        <label class="format"><input type="checkbox" name="output" value="pdf-flow" checked disabled><span><b>PDF-документ</b><small>Обязательный результат</small></span></label>
+        <label class="format"><input type="checkbox" name="output" value="json" checked disabled><span><b>JSON</b><small>Структурированный результат</small></span></label>
+      </div></div>
+      <button class="submit" id="submit" type="submit">Распознать документ</button>
+      <section class="status" id="status" aria-live="polite"><div class="status-head"><div><div class="status-title" id="status-title">Готовим документ…</div><div class="status-detail" id="status-detail"></div></div><strong id="percent">0%</strong></div><div class="progress"><span id="progress-bar"></span></div></section>
+      <div class="message" id="message" role="status"></div>
+    </form>
+    <p class="footer-note"><b>Обратите внимание:</b> этот интерфейс принимает PDF и изображения. DOCX можно использовать как эталон для оценки качества распознавания, но не как входной скан.</p>
+  </main>
+<script>
+(() => {
+  const form = document.querySelector('#form');
+  const fileInput = document.querySelector('#file');
+  const drop = document.querySelector('#drop');
+  const fileName = document.querySelector('#file-name');
+  const submit = document.querySelector('#submit');
+  const status = document.querySelector('#status');
+  const title = document.querySelector('#status-title');
+  const detail = document.querySelector('#status-detail');
+  const percent = document.querySelector('#percent');
+  const bar = document.querySelector('#progress-bar');
+  const message = document.querySelector('#message');
+  let selected = null;
+
+  function selectFile(file) {
+    if (!file) return;
+    selected = file;
+    fileInput.files = (() => { const dt = new DataTransfer(); dt.items.add(file); return dt.files; })();
+    fileName.textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} МБ`;
+    fileName.style.display = 'block';
+    message.className = 'message';
+    message.textContent = '';
+  }
+  document.querySelector('#browse').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => selectFile(fileInput.files[0]));
+  for (const event of ['dragenter', 'dragover']) drop.addEventListener(event, e => { e.preventDefault(); drop.classList.add('drag'); });
+  for (const event of ['dragleave', 'drop']) drop.addEventListener(event, e => { e.preventDefault(); drop.classList.remove('drag'); });
+  drop.addEventListener('drop', e => selectFile(e.dataTransfer.files[0]));
+  document.querySelector('#toggle-key').addEventListener('click', e => {
+    const input = document.querySelector('#api-key');
+    input.type = input.type === 'password' ? 'text' : 'password';
+    e.currentTarget.textContent = input.type === 'password' ? 'Показать' : 'Скрыть';
+  });
+  function showError(text) { message.className = 'message error'; message.textContent = text; }
+  async function request(url, options = {}) {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+      let reason = `Ошибка сервера (${response.status})`;
+      try { const body = await response.json(); reason = body.detail || reason; } catch {}
+      throw new Error(reason);
+    }
+    return response;
+  }
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const apiKey = document.querySelector('#api-key').value;
+    if (!selected) { showError('Сначала выберите файл.'); return; }
+    const outputs = [...form.querySelectorAll('input[name="output"]:checked')].map(input => input.value);
+    if (!outputs.length) { showError('Выберите хотя бы один формат результата.'); return; }
+    submit.disabled = true;
+    status.style.display = 'block';
+    message.className = 'message'; message.textContent = '';
+    title.textContent = 'Отправляем документ…'; detail.textContent = 'Файл загружается на сервер';
+    percent.textContent = '0%'; bar.style.width = '0%';
+    try {
+      const data = new FormData(); data.append('file', selected); data.append('options', JSON.stringify({engine:'docling', outputs}));
+      const created = await (await request('/v1/jobs', {method:'POST', headers:{'X-API-Key':apiKey}, body:data})).json();
+      title.textContent = 'Распознаём документ';
+      let job;
+      do {
+        await new Promise(resolve => setTimeout(resolve, 1800));
+        job = await (await request(`/v1/jobs/${encodeURIComponent(created.job_id)}`, {headers:{'X-API-Key':apiKey}})).json();
+        const p = Math.max(0, Math.min(100, Number(job.progress) || 0));
+        percent.textContent = `${p}%`; bar.style.width = `${p}%`;
+        detail.textContent = job.pages_total ? `Обработано страниц: ${Math.floor(job.pages_total * p / 100)} из ${job.pages_total}` : 'Подготавливаем модели и документ…';
+        if (job.status === 'queued') title.textContent = 'Документ в очереди';
+      } while (job.status === 'queued' || job.status === 'running');
+      if (job.status !== 'completed') throw new Error(job.error || 'Не удалось обработать документ.');
+      title.textContent = 'Документ готов'; detail.textContent = `${job.pages_total || 'Все'} страниц обработано`;
+      const result = await request(`/v1/jobs/${encodeURIComponent(created.job_id)}/result`, {headers:{'X-API-Key':apiKey}});
+      const blob = await result.blob();
+      const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `docpipe-${created.job_id}.zip`; link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 30000);
+      message.className = 'message success'; message.textContent = 'Результат скачан архивом. Внутри — выбранные форматы и распознанный текст.';
+    } catch (error) {
+      showError(error.message || 'Не удалось связаться с сервисом. Проверьте подключение и ключ доступа.');
+    } finally { submit.disabled = false; }
+  });
+})();
+</script>
+</body>
+</html>

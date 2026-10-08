@@ -21,7 +21,7 @@ from docpipe.stages.masking import mask_figures
 from docpipe.stages.captions import attach_captions
 
 
-def parse(path: str | Path, config: AppConfig | None = None, engine: str="fake", fixtures: Path | None=None, out_dir: Path | None=None, engine_instance=None, progress_callback=None) -> Document:
+def parse(path: str | Path, config: AppConfig | None = None, engine: str="docling", fixtures: Path | None=None, out_dir: Path | None=None, engine_instance=None, progress_callback=None) -> Document:
     config=config or AppConfig()
     source=Path(path)
     pdf_path=normalize_input(source,config)

@@ -7,22 +7,15 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 from docpipe.ir import BlockType, Document
+from docpipe.renderers.fonts import require_font
 
 
 def _font_name() -> str:
-    candidates = [
-        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-        Path("/usr/share/fonts/dejavu/DejaVuSans.ttf"),
-        Path("C:/Windows/Fonts/DejaVuSans.ttf"),
-        Path("C:/Windows/Fonts/arial.ttf"),
-    ]
-    for path in candidates:
-        if path.exists():
-            name = "DocpipeDejaVu"
-            if name not in pdfmetrics.getRegisteredFontNames():
-                pdfmetrics.registerFont(TTFont(name, str(path)))
-            return name
-    raise RuntimeError("Не найден свободный шрифт с кириллицей: DejaVu Sans")
+    path = require_font()
+    name = "DocpipePositional"
+    if name not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont(name, str(path)))
+    return name
 
 
 def render(document: Document, out: Path, base_dir: Path | None = None) -> Path:

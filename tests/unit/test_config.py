@@ -7,3 +7,4 @@ def test_default_config():
     assert config.force_ocr == "auto"
     assert config.render.headers_footers == "drop"
     assert config.render.positional is False
+    assert config.api.default_engine == "docling"

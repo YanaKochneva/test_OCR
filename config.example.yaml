@@ -28,3 +28,15 @@ render:
   headers_footers: drop
   positional: false
 debug: false
+api:
+  default_engine: docling
+  workers: 1
+  max_queue: 16
+  max_jobs: 1000
+  result_ttl_seconds: 3600
+  work_dir: data/jobs
+  sync_max_pages: 10
+  sync_timeout_seconds: 600
+  shutdown_timeout_seconds: 300
+  # Configure DOCPIPE_API__API_KEY with a secret of at least 32 characters before deployment.
+  api_key: null

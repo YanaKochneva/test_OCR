@@ -20,4 +20,4 @@ def test_fake_pipeline(tmp_path):
  assert (tmp_path/'out/images/p001_fig01.png').exists()
  render_md(doc,tmp_path/'out/document.md'); render_html(doc,tmp_path/'out/document.html')
  assert 'images/p001_fig01.png' in (tmp_path/'out/document.md').read_text(encoding='utf-8')
- assert '<figure>' in (tmp_path/'out/document.html').read_text(encoding='utf-8')
+ assert '<figure class="figure-position"' in (tmp_path/'out/document.html').read_text(encoding='utf-8')

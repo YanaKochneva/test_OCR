@@ -30,6 +30,7 @@ EXPECTED = {
     "weasyprint": ("68.0", "BSD-3-Clause"),
     "python-docx": ("1.2.0", "MIT"),
     "python-multipart": ("0.0.20", "Apache-2.0"),
+    "docling": ("2.134.0", "MIT"),
 }
 
 
@@ -37,7 +38,7 @@ def main() -> int:
     root = Path(__file__).resolve().parents[1]
     licenses = (root / "LICENSES.md").read_text(encoding="utf-8")
     failed = False
-    display_names = {"fastapi": "FastAPI", "uvicorn": "Uvicorn", "numpy": "NumPy", "pydantic-settings": "pydantic-settings", "PyYAML": "PyYAML", "pypdfium2": "pypdfium2", "pikepdf": "pikepdf", "img2pdf": "img2pdf", "Pillow": "Pillow", "reportlab": "reportlab", "weasyprint": "WeasyPrint", "rapidfuzz": "rapidfuzz", "pytest": "pytest", "pydantic": "pydantic", "python-docx": "python-docx", "python-multipart": "python-multipart"}
+    display_names = {"fastapi": "FastAPI", "uvicorn": "Uvicorn", "numpy": "NumPy", "pydantic-settings": "pydantic-settings", "PyYAML": "PyYAML", "pypdfium2": "pypdfium2", "pikepdf": "pikepdf", "img2pdf": "img2pdf", "Pillow": "Pillow", "reportlab": "reportlab", "weasyprint": "WeasyPrint", "rapidfuzz": "rapidfuzz", "pytest": "pytest", "pydantic": "pydantic", "python-docx": "python-docx", "python-multipart": "python-multipart", "docling": "docling"}
     for package, (version, license_name) in EXPECTED.items():
         try:
             installed = md.version(package)
@@ -47,8 +48,12 @@ def main() -> int:
         if installed != version:
             print(f"WARN: {package}: установлена {installed}, ожидается {version}; проверка лицензии для зафиксированного релиза не применяется")
             continue
-        row = f"| {display_names[package]} | {version} | {license_name} |"
-        record_ok = row in licenses
+        row_prefix = f"| {display_names[package]} | {version} | {license_name}"
+        record_ok = any(
+            line.startswith(row_prefix)
+            and line[len(row_prefix):].lstrip().startswith(("|", ";"))
+            for line in licenses.splitlines()
+        )
         if record_ok:
             print(f"OK: {package} {installed} — {license_name}")
         else:

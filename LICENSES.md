@@ -19,6 +19,7 @@
 | WeasyPrint | 68.0 | BSD-3-Clause | разрешён |
 | python-docx | 1.2.0 | MIT | разрешён |
 | python-multipart | 0.0.20 | Apache-2.0 | разрешён; multipart-загрузки FastAPI |
+| docling | 2.134.0 | MIT | разрешён; лицензии загружаемых OCR/ML-моделей проверяются отдельно |
 | ruff | 0.14.2 | MIT | dev-зависимость, разрешён |
 | mypy | 1.18.2 | MIT | dev-зависимость, разрешён |
 | pytest | 9.0.2 | MIT | dev-зависимость, разрешён |

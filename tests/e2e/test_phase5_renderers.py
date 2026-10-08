@@ -57,6 +57,7 @@ def test_pdf_positional(tmp_path: Path):
 
 
 def test_docx(tmp_path: Path):
+    make_source(tmp_path)
     out = tmp_path / "document.docx"
     render_docx(make_document(), out, tmp_path)
     assert out.exists() and out.stat().st_size > 0

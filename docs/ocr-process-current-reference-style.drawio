@@ -1,0 +1,107 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net">
+  <diagram id="ocr-current-reference" name="Текущий процесс OCR">
+    <mxGraphModel grid="1" gridSize="10" page="1" pageWidth="1540" pageHeight="2780">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Актуальный процесс OCR в DocPipe" vertex="1" parent="1" style="text;html=1;fontSize=28;fontStyle=1;fontColor=#14233B;align=center;">
+          <mxGeometry as="geometry" x="220" y="20" width="1100" height="50" />
+        </mxCell>
+        <mxCell id="source" value="&lt;b&gt;Входной документ&lt;/b&gt;&lt;br&gt;PDF или изображение; основной путь обработки — Docling.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; PDF · PNG · JPG · TIFF и другие изображения&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#5BC47A;fillColor=#E8F8ED;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="390" y="85" width="760" height="125" />
+        </mxCell>
+        <mxCell id="n0" value="&lt;b&gt;1. Приём и проверка файла&lt;/b&gt;&lt;br&gt;Проверяем наличие, размер и возможность открыть файл.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; Python · pathlib · лимиты AppConfig&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#1991FF;fillColor=#DDEEFF;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="235" width="820" height="170" />
+        </mxCell>
+        <mxCell id="edgesource" edge="1" parent="1" source="source" target="n0" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n1" value="&lt;b&gt;2. Нормализация входа&lt;/b&gt;&lt;br&gt;PDF сохраняется; изображения и их кадры переводятся в PDF.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; Pillow · img2pdf&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#1991FF;fillColor=#DDEEFF;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="430" width="820" height="170" />
+        </mxCell>
+        <mxCell id="edgen0" edge="1" parent="1" source="n0" target="n1" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n2" value="&lt;b&gt;3. Анализ PDF и текстового слоя&lt;/b&gt;&lt;br&gt;Проверяем страницы и качество существующего текста.&lt;br&gt;В текущем пути Docling страницы всё равно проходят OCR.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; pypdfium2 · docpipe.io.textlayer&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#1991FF;fillColor=#DDEEFF;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="625" width="820" height="170" />
+        </mxCell>
+        <mxCell id="edgen1" edge="1" parent="1" source="n1" target="n2" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n3" value="&lt;b&gt;4. Растрирование страниц&lt;/b&gt;&lt;br&gt;Получаем изображение каждой страницы, обычно при 300 DPI.&lt;br&gt;Сохраняем размеры страницы для пересчёта координат.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; pypdfium2 · Pillow&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#1991FF;fillColor=#DDEEFF;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="820" width="820" height="170" />
+        </mxCell>
+        <mxCell id="edgen2" edge="1" parent="1" source="n2" target="n3" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n4" value="&lt;b&gt;5. Распознавание и анализ структуры&lt;/b&gt;&lt;br&gt;Находим текст, заголовки, оглавление, таблицы и иллюстрации.&lt;br&gt;Распознаём русский текст и структуру ячеек.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; Docling · RapidOCR / PP-OCRv5 eslav · TableFormer&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#1991FF;fillColor=#DDEEFF;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="1015" width="820" height="170" />
+        </mxCell>
+        <mxCell id="edgen3" edge="1" parent="1" source="n3" target="n4" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n5" value="&lt;b&gt;6. Единое представление страницы&lt;/b&gt;&lt;br&gt;Переводим результат в блоки с текстом и координатами.&lt;br&gt;Сохраняем строки, столбцы и объединения ячеек.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; Адаптер Docling · IR · Pydantic&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#A77BDF;fillColor=#F0E9FB;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="1210" width="820" height="170" />
+        </mxCell>
+        <mxCell id="edgen4" edge="1" parent="1" source="n4" target="n5" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n6" value="&lt;b&gt;7. Восстановление пропущенного текста&lt;/b&gt;&lt;br&gt;Собираем строки оглавления; добавляем уверенные OCR-строки,&lt;br&gt;не покрытые существующими блоками.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; document_index · parsed OCR cells · ocr_recovery&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#1991FF;fillColor=#DDEEFF;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="1405" width="820" height="170" />
+        </mxCell>
+        <mxCell id="edgen5" edge="1" parent="1" source="n5" target="n6" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n7" value="&lt;b&gt;8. Извлечение иллюстраций&lt;/b&gt;&lt;br&gt;Объединяем и фильтруем области изображений.&lt;br&gt;Вырезаем иллюстрации и сохраняем файлы для экспорта.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; Pillow · docpipe.stages.figures&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#1991FF;fillColor=#DDEEFF;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="1600" width="820" height="170" />
+        </mxCell>
+        <mxCell id="edgen6" edge="1" parent="1" source="n6" target="n7" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n8" value="&lt;b&gt;9. Порядок чтения и очистка&lt;/b&gt;&lt;br&gt;Упорядочиваем блоки по координатам, связываем подписи.&lt;br&gt;Очищаем текст; обрабатываем колонтитулы по настройкам.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; assign_order · attach_captions · postprocess&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#1991FF;fillColor=#DDEEFF;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="1795" width="820" height="170" />
+        </mxCell>
+        <mxCell id="edgen7" edge="1" parent="1" source="n7" target="n8" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n9" value="&lt;b&gt;10. Сборка документа и размещение&lt;/b&gt;&lt;br&gt;Объединяем обработанные страницы в IR документа.&lt;br&gt;Для позиционных форматов рассчитываем переносы,&lt;br&gt;высоты таблиц и смещения при пересечениях текста.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; Document IR · text_layout · table_layout&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#A77BDF;fillColor=#F0E9FB;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="1990" width="820" height="170" />
+        </mxCell>
+        <mxCell id="edgen8" edge="1" parent="1" source="n8" target="n9" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n10" value="&lt;b&gt;11. Экспорт результата&lt;/b&gt;&lt;br&gt;Создаём DOCX, HTML, Markdown, JSON и варианты PDF.&lt;br&gt;В DOCX / HTML — текст, таблицы и встроенные изображения.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; python-docx · HTML/CSS · ReportLab · pikepdf&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#A77BDF;fillColor=#F0E9FB;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="2185" width="820" height="170" />
+        </mxCell>
+        <mxCell id="edgen9" edge="1" parent="1" source="n9" target="n10" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n11" value="&lt;b&gt;12. Проверка результата&lt;/b&gt;&lt;br&gt;Проверяем текст, оглавление, таблицы, изображения и файлы.&lt;br&gt;Ошибки проверки не засчитываются как успешный результат.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; docpipe.verify · checks&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#F0A33A;fillColor=#FFF1D9;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="2380" width="820" height="170" />
+        </mxCell>
+        <mxCell id="edgen10" edge="1" parent="1" source="n10" target="n11" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="outcome" value="&lt;b&gt;Результат обработки&lt;/b&gt;&lt;br&gt;Собранные документы, извлечённые изображения&lt;br&gt;и отчёт автоматических проверок.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; Рендереры DocPipe · verification.json&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#5BC47A;fillColor=#E8F8ED;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="360" y="2595" width="820" height="140" />
+        </mxCell>
+        <mxCell id="edgen11" edge="1" parent="1" source="n11" target="outcome" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;strokeColor=#718096;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="repeat" value="&lt;b&gt;Для каждой страницы&lt;/b&gt;&lt;br&gt;Этапы 4–9 повторяются. После обработки страниц собирается общий документ.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; Page · Document IR&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#777777;fillColor=#F0F1F3;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="20" y="650" width="310" height="210" />
+        </mxCell>
+        <mxCell id="error" value="&lt;b&gt;Ошибка страницы&lt;/b&gt;&lt;br&gt;Статус FAILED и предупреждение сохраняются. Остальные страницы могут продолжить обработку.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; PageStatus · Python&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#D9534F;fillColor=#FDE8E7;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1210" y="1000" width="310" height="245" />
+        </mxCell>
+        <mxCell id="adapters" value="&lt;b&gt;Другие адаптеры&lt;/b&gt;&lt;br&gt;PPStructure и PaddleOCR-VL доступны в коде. PaddleOCR-VL требует отдельного окружения; в текущих тестах использован Docling.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; PaddleOCR · PaddlePaddle&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#777777;fillColor=#F0F1F3;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="20" y="1070" width="310" height="280" />
+        </mxCell>
+        <mxCell id="qa" value="&lt;b&gt;Границы контроля&lt;/b&gt;&lt;br&gt;Успешные проверки не гарантируют полного визуального совпадения. Для оценки нужны эталон и сравнение вёрстки.&lt;br&gt;&lt;font color=&quot;#243B53&quot;&gt;&lt;b&gt;Стек:&lt;/b&gt; verify · benchmark&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#F0A33A;fillColor=#FFF1D9;fontColor=#17304E;strokeWidth=1.5;arcSize=12;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1210" y="2240" width="310" height="265" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

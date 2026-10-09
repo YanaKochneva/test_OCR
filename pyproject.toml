@@ -29,6 +29,7 @@ dev = ["pytest==9.0.2", "ruff==0.14.2", "mypy==1.18.2"]
 docling = ["docling==2.134.0"]
 paddle = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
 vl = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
+glm = ["lxml>=5,<7"]
 pdf = ["weasyprint==68.0"]
 
 [project.scripts]

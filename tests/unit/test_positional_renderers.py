@@ -125,9 +125,55 @@ def test_docx_anchors_objects_and_embeds_images(tmp_path: Path):
         document_xml = archive.read("word/document.xml").decode("utf-8")
         image_members = [name for name in archive.namelist() if name.startswith("word/media/")]
 
-    assert "left:20.000pt;top:60.000pt" in document_xml
+    assert "<w:tblpPr" in document_xml
+    assert 'w:tblpX="400"' in document_xml
+    assert 'w:tblpY="1200"' in document_xml
     assert "<wp:anchor" in document_xml
     assert "1651000" in document_xml and "1905000" in document_xml
     assert "<w:txbxContent>" in document_xml
     assert "Cell text" in document_xml
     assert len(image_members) == 1
+
+
+def test_pdf_multiline_uses_single_line_advance():
+    from unittest.mock import Mock
+    from docpipe.renderers.pdf_positional import _draw_lines
+    pdf = Mock()
+    _draw_lines(pdf, "one\ntwo\nthree", 10, 100, 150, 50, 11, "Helvetica")
+    text = pdf.beginText.return_value
+    text.setLeading.assert_called_once_with(11)
+    assert text.textLine.call_count == 3
+    text.moveCursor.assert_not_called()
+
+
+def test_table_growth_reserves_space_for_following_text(tmp_path):
+    from docpipe.renderers.table_layout import build_table_layout
+    from docpipe.renderers.text_layout import collision_free_text_tops
+    from docpipe.renderers.typography import text_style
+
+    document = sample_document()
+    table = document.pages[0].blocks[1]
+    table.table.cells[0].text = "Long cell content " * 30
+    following = Block(
+        id="following", type=BlockType.TEXT,
+        bbox=BBox(x0=20, y0=105, x1=120, y1=125),
+        order=3, text="Following paragraph",
+    )
+    layout = build_table_layout(table)
+    assert sum(layout.row_heights) > 40
+    tops = collision_free_text_tops([table, following], lambda b: text_style(b.type.value))
+    assert tops[id(following)] >= tops[id(table)] + sum(layout.row_heights) + 1.5
+
+
+def test_searchable_overlay_contains_native_table_text():
+    import pypdfium2 as pdfium
+    from docpipe.renderers.pdf_searchable import _make_overlay
+    with pdfium.PdfDocument(_make_overlay(sample_document(), 0, 200, 300)) as pdf:
+        page = pdf[0]
+        textpage = page.get_textpage()
+        try:
+            assert "Cell text" in textpage.get_text_range()
+            assert "Page one" in textpage.get_text_range()
+        finally:
+            textpage.close()
+            page.close()

@@ -9,7 +9,6 @@ services:
       DOCPIPE_OFFLINE: "true"
       DOCPIPE_API__DEFAULT_ENGINE: "docling"
       DOCPIPE_API__WORKERS: "1"
-      DOCPIPE_API__API_KEY: "${DOCPIPE_API__API_KEY:?Set DOCPIPE_API__API_KEY to a secret of at least 32 characters}"
     read_only: true
     tmpfs:
       - /tmp

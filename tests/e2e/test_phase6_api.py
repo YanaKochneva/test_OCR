@@ -77,7 +77,7 @@ def test_job_lifecycle(tmp_path):
 
 def test_api_key_is_enforced_for_job_endpoints(tmp_path):
     api_key = "x" * 32
-    cfg = AppConfig(api={"work_dir": tmp_path, "default_engine": "fake", "api_key": api_key})
+    cfg = AppConfig(api={"work_dir": tmp_path, "default_engine": "fake", "api_key": api_key, "require_api_key": True})
     app = create_app(cfg)
     with TestClient(app) as client:
         no_key = client.post("/v1/jobs", files={"file": ("input.pdf", pdf_bytes(), "application/pdf")})
@@ -128,3 +128,16 @@ def test_api_rejects_unsupported_output_before_queueing(tmp_path):
             data={"options": '{"outputs":["shell"]}'},
         )
     assert response.status_code == 400
+
+
+def test_web_does_not_require_previously_configured_key(tmp_path):
+    cfg = AppConfig(api={"work_dir": tmp_path, "default_engine": "fake", "api_key": "x" * 32})
+    with TestClient(create_app(cfg)) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert 'id="api-key"' not in response.text
+        assert "X-API-Key" not in response.text
+        assert client.get("/metrics").status_code == 200
+        accepted = client.post("/v1/jobs", files={"file": ("input.pdf", pdf_bytes(), "application/pdf")})
+        assert accepted.status_code == 202, accepted.text
+        assert client.get(f"/v1/jobs/{accepted.json()['job_id']}").status_code == 200

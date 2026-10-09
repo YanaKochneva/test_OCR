@@ -8,6 +8,9 @@ from pathlib import Path
 from urllib.parse import quote
 
 from docpipe.ir import Block, BlockType, Document
+from docpipe.renderers.table_layout import build_table_layout
+from docpipe.renderers.text_layout import collision_free_text_tops, estimate_text_height, wrap_text
+from docpipe.renderers.typography import FONT_FAMILY, TABLE_FONT_PT, text_style
 
 
 def _box_style(x0: float, y0: float, x1: float, y1: float) -> str:
@@ -17,113 +20,67 @@ def _box_style(x0: float, y0: float, x1: float, y1: float) -> str:
     )
 
 
-def _fit_font_size(
-    text: str,
-    width: float,
-    height: float,
-    maximum: float,
-    *,
-    line_height: float = 1.04,
-    horizontal_inset: float = 0.0,
-    vertical_inset: float = 0.0,
-) -> float:
-    """Estimate a font size whose wrapped text fits its positioned box."""
-    available_width = max(1.0, width - horizontal_inset)
-    available_height = max(1.0, height - vertical_inset)
-    lines = text.splitlines() or [""]
-
-    def fits(size: float) -> bool:
-        chars_per_line = max(1, int(available_width / (size * 0.52)))
-        wrapped_lines = sum(
-            max(1, (len(line) + chars_per_line - 1) // chars_per_line)
-            for line in lines
-        )
-        return wrapped_lines * size * line_height <= available_height
-
-    low, high = 5.0, max(5.0, maximum)
-    if not fits(low):
-        return low
-    for _ in range(16):
-        middle = (low + high) / 2
-        if fits(middle):
-            low = middle
-        else:
-            high = middle
-    return low
-
-
-def _text_block(block: Block) -> str:
+def _text_block(block: Block, top: float | None = None) -> str:
     text = block.text or ""
     if block.type == BlockType.LIST_ITEM:
-        text = "• " + text
+        text = chr(8226) + " " + text
+    size, bold, italic = text_style(block.type.value)
     bbox = block.bbox
-    font_size = _fit_font_size(
-        text,
-        bbox.x1 - bbox.x0,
+    text = wrap_text(text, bbox.x1 - bbox.x0, (size, bold, italic))
+    top = bbox.y0 if top is None else top
+    height = max(
         bbox.y1 - bbox.y0,
-        min(24.0, (bbox.y1 - bbox.y0) * 0.78),
+        estimate_text_height(text, bbox.x1 - bbox.x0, (size, bold, italic)),
     )
-    bold = block.type == BlockType.HEADING
-    tag = "h2" if bold else "div"
-    style = _box_style(bbox.x0, bbox.y0, bbox.x1, bbox.y1)
+    style = _box_style(bbox.x0, top, bbox.x1, top + height)
     return (
-        f'<{tag} class="text-block" data-block="{escape(block.id, quote=True)}" '
-        f'data-order="{block.order}" style="{style};font-size:{font_size:.2f}pt;'
-        f'font-weight:{700 if bold else 400}">{escape(text)}</{tag}>'
+        f'<div class="text-block" data-block="{escape(block.id, quote=True)}" '
+        f'data-order="{block.order}" style="{style};font-size:{size:.2f}pt;'
+        f'font-weight:{700 if bold else 400};font-style:{"italic" if italic else "normal"}">'
+        f"{escape(text)}</div>"
     )
 
 
-def _table_cells(block: Block, page_width: float, page_height: float) -> list[str]:
-    assert block.table is not None
-    output: list[str] = []
-    cells = block.table.cells
-    for index, cell in enumerate(cells):
-        box = cell.bbox
-        style = _box_style(box.x0, box.y0, box.x1, box.y1)
-        fontsize = _fit_font_size(
-            cell.text,
-            box.x1 - box.x0,
-            box.y1 - box.y0,
-            min(16.0, (box.y1 - box.y0) * 0.68),
-            line_height=1.02,
-            horizontal_inset=5.0,
-            vertical_inset=2.0,
-        )
-        output.append(
-            f'<div role="cell" class="table-cell" data-block="{escape(block.id, quote=True)}" '
-            f'data-cell="{index}" style="{style};font-size:{fontsize:.2f}pt">'
-            f'{escape(cell.text)}</div>'
-        )
-    if cells:
-        return output
-
-    # Preserve recognized table text when an engine provides no cell geometry.
+def _table_markup(block: Block, top: float | None = None) -> str:
+    """Render OCR cells as one positioned, semantic HTML table."""
+    layout = build_table_layout(block)
     box = block.bbox
-    if (block.text or "").strip():
-        style = _box_style(box.x0, box.y0, box.x1, box.y1)
-        output.append(
-            f'<div role="cell" class="table-cell" data-block="{escape(block.id, quote=True)}" '
-            f'style="{style}">{escape(block.text)}</div>'
-        )
-        return output
-
-    rows: dict[int, dict[int, str]] = {}
-    for cell in cells:
-        rows.setdefault(cell.row, {})[cell.col] = cell.text
-    cols = max(1, block.table.n_cols)
-    row_count = max(1, block.table.n_rows)
-    for row in range(row_count):
-        for col in range(cols):
-            x0 = box.x0 + (box.x1 - box.x0) * col / cols
-            x1 = box.x0 + (box.x1 - box.x0) * (col + 1) / cols
-            y0 = box.y0 + (box.y1 - box.y0) * row / row_count
-            y1 = box.y0 + (box.y1 - box.y0) * (row + 1) / row_count
-            style = _box_style(x0, y0, x1, y1)
-            output.append(
-                f'<div role="cell" class="table-cell" data-block="{escape(block.id, quote=True)}" '
-                f'style="{style}">{escape(rows.get(row, {}).get(col, ""))}</div>'
-            )
-    return output
+    top = box.y0 if top is None else top
+    style = _box_style(box.x0, top, box.x1, top + sum(layout.row_heights))
+    cells = {(cell.row, cell.col): cell for cell in layout.cells}
+    covered: set[tuple[int, int]] = set()
+    output = [
+        f'<table class="table-block" data-block="{escape(block.id, quote=True)}" '
+        f'data-order="{block.order}" style="{style};font-size:{TABLE_FONT_PT:.2f}pt">',
+        "<colgroup>",
+    ]
+    output.extend(f'<col style="width:{width:.3f}pt">' for width in layout.column_widths)
+    output.append("</colgroup><tbody>")
+    for row in range(layout.rows):
+        output.append(f'<tr style="height:{layout.row_heights[row]:.3f}pt">')
+        col = 0
+        while col < layout.cols:
+            if (row, col) in covered:
+                col += 1
+                continue
+            cell = cells.get((row, col))
+            if cell is None:
+                output.append("<td></td>")
+                col += 1
+                continue
+            if cell.rowspan > 1:
+                covered.update(
+                    (covered_row, covered_col)
+                    for covered_row in range(row + 1, row + cell.rowspan)
+                    for covered_col in range(col, col + cell.colspan)
+                )
+            rowspan = f' rowspan="{cell.rowspan}"' if cell.rowspan > 1 else ""
+            colspan = f' colspan="{cell.colspan}"' if cell.colspan > 1 else ""
+            output.append(f"<td{rowspan}{colspan}>{escape(cell.text)}</td>")
+            col += cell.colspan
+        output.append("</tr>")
+    output.append("</tbody></table>")
+    return "".join(output)
 
 
 def render(
@@ -132,11 +89,14 @@ def render(
     self_contained: bool = True,
     base_dir: Path | None = None,
 ) -> Path:
-    """Render an HTML document with page-sized canvases and IR-positioned objects."""
+    """Render positioned page canvases with consistent type and real tables."""
     out.parent.mkdir(parents=True, exist_ok=True)
     image_root = base_dir or out.parent
     body: list[str] = ['<main id="document">']
     for page in document.pages:
+        text_tops = collision_free_text_tops(
+            page.blocks, lambda block: text_style(block.type.value)
+        )
         body.append(
             f'<section class="page" data-page="{page.index + 1}" '
             f'style="width:{page.width_pt:.3f}pt;height:{page.height_pt:.3f}pt">'
@@ -161,24 +121,27 @@ def render(
                     f'src="{escape(src, quote=True)}"></figure>'
                 )
             elif block.type == BlockType.TABLE and block.table:
-                body.extend(_table_cells(block, page.width_pt, page.height_pt))
+                body.append(_table_markup(block, text_tops.get(id(block))))
             elif block.type == BlockType.CAPTION and not (block.text or "").strip():
                 continue
             elif block.text and block.type not in {BlockType.FIGURE, BlockType.TABLE}:
-                body.append(_text_block(block))
+                body.append(_text_block(block, text_tops.get(id(block))))
         body.append("</section>")
     body.append("</main>")
-    html = """<!doctype html>
+    family = f'{FONT_FAMILY}, "DejaVu Sans", sans-serif'
+    html = f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Распознанный документ</title><style>
-*{box-sizing:border-box}html,body{margin:0;padding:0;background:#e9ece9;color:#151515}
-#document{width:max-content;max-width:100%;margin:24px auto;font-family:Arial,"DejaVu Sans",sans-serif}
-.page{position:relative;overflow:hidden;background:#fff;margin:0 auto 24px;box-shadow:0 2px 14px #0002;break-after:page;page-break-after:always}
-.page:last-child{break-after:auto;page-break-after:auto}.text-block,.table-cell,.figure{position:absolute;margin:0;padding:0}
-.text-block{overflow:visible}.table-cell,.figure{overflow:hidden}
-.text-block{line-height:1.04;white-space:pre-wrap;overflow-wrap:anywhere;color:#111}
-.text-block h2{margin:0}.figure-position{position:absolute;margin:0;padding:0;overflow:hidden}.figure{display:block;width:100%;height:100%;object-fit:fill}.table-cell{border:.45pt solid #363636;padding:1pt 2pt;line-height:1.02;white-space:pre-wrap;overflow-wrap:anywhere;color:#111}
-@media print{@page{margin:0}html,body{background:#fff}#document{margin:0}.page{margin:0;box-shadow:none}}
+<title>Docpipe</title><style>
+*{{box-sizing:border-box}}html,body{{margin:0;padding:0;background:#e9ece9;color:#151515}}
+#document{{width:max-content;max-width:100%;margin:24px auto;font-family:{family};font-size:10pt}}
+.page{{position:relative;overflow:hidden;background:#fff;margin:0 auto 24px;box-shadow:0 2px 14px #0002;break-after:page;page-break-after:always}}
+.page:last-child{{break-after:auto;page-break-after:auto}}
+.text-block,.table-block,.figure{{position:absolute;margin:0;padding:0;font-family:{family};color:#111;z-index:1}}
+.text-block{{overflow:visible;line-height:1;white-space:pre-wrap;overflow-wrap:anywhere}}
+.figure-position{{position:absolute;z-index:1;margin:0;padding:0;overflow:hidden;background:#fff}}.figure{{display:block;width:100%;height:100%;object-fit:fill}}
+.table-block{{width:100%;height:100%;table-layout:fixed;border-collapse:collapse;line-height:1;background:#fff}}
+.table-block td{{border:.5pt solid #333;padding:1.5pt 2pt;vertical-align:top;white-space:pre-wrap;overflow-wrap:anywhere}}
+@media print{{@page{{margin:0}}html,body{{background:#fff}}#document{{margin:0}}.page{{margin:0;box-shadow:none}}}}
 </style></head><body>""" + "".join(body) + "</body></html>"
     out.write_text(html, encoding="utf-8")
     return out

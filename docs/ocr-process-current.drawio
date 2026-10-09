@@ -1,0 +1,251 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net">
+  <diagram id="current-ocr" name="Обработка файла — текущая архитектура">
+    <mxGraphModel grid="1" gridSize="10" page="1" pageWidth="1400" pageHeight="3020">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Как файл становится документом" style="text;html=1;fontSize=32;fontStyle=1;fontColor=#14233B;align=center;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="100" y="55" width="1200" height="55" />
+        </mxCell>
+        <mxCell id="subtitle" value="Текущий путь Docling: от входного файла до проверенного результата" style="text;html=1;fontSize=18;fontColor=#55708F;align=center;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="100" y="120" width="1200" height="40" />
+        </mxCell>
+        <mxCell id="group0" value="" style="rounded=1;arcSize=6;fillColor=#EBF2FC;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="85" y="210" width="1230" height="875" />
+        </mxCell>
+        <mxCell id="label0" value="01 / ПОДГОТОВКА ВХОДА" style="text;html=1;align=left;fontSize=18;fontStyle=1;fontColor=#397BD5;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="130" y="235" width="1000" height="35" />
+        </mxCell>
+        <mxCell id="group4" value="" style="rounded=1;arcSize=6;fillColor=#E9F5F2;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="85" y="1125" width="1230" height="1075" />
+        </mxCell>
+        <mxCell id="label4" value="02 / РАСПОЗНАВАНИЕ СТРАНИЦ" style="text;html=1;align=left;fontSize=18;fontStyle=1;fontColor=#138B7B;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="130" y="1150" width="1000" height="35" />
+        </mxCell>
+        <mxCell id="group9" value="" style="rounded=1;arcSize=6;fillColor=#F1EDF8;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="85" y="2240" width="1230" height="675" />
+        </mxCell>
+        <mxCell id="label9" value="03 / СБОРКА И КОНТРОЛЬ" style="text;html=1;align=left;fontSize=18;fontStyle=1;fontColor=#8463BA;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="130" y="2265" width="1000" height="35" />
+        </mxCell>
+        <mxCell id="n0" value="" style="rounded=1;arcSize=12;html=1;fillColor=#FFFFFF;strokeColor=#D3DEE9;shadow=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="140" y="290" width="1120" height="170" />
+        </mxCell>
+        <mxCell id="num0" value="01" style="rounded=1;arcSize=24;html=1;fillColor=#397BD5;strokeColor=none;fontColor=#FFFFFF;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="160" y="308" width="56" height="48" />
+        </mxCell>
+        <mxCell id="heading0" value="Приём и проверка файла" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#17304E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="306" width="980" height="38" />
+        </mxCell>
+        <mxCell id="logic0" value="Проверяем наличие, размер и возможность открыть файл." style="text;html=1;align=left;verticalAlign=top;fontSize=18;fontColor=#55708F;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="347" width="990" height="78" />
+        </mxCell>
+        <mxCell id="stack0" value="Python · pathlib · лимиты AppConfig" style="text;html=1;align=left;fontSize=15;fontStyle=1;fontColor=#397BD5;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="432" width="990" height="25" />
+        </mxCell>
+        <mxCell id="n1" value="" style="rounded=1;arcSize=12;html=1;fillColor=#FFFFFF;strokeColor=#D3DEE9;shadow=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="140" y="490" width="1120" height="170" />
+        </mxCell>
+        <mxCell id="num1" value="02" style="rounded=1;arcSize=24;html=1;fillColor=#397BD5;strokeColor=none;fontColor=#FFFFFF;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="160" y="508" width="56" height="48" />
+        </mxCell>
+        <mxCell id="heading1" value="Нормализация входа" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#17304E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="506" width="980" height="38" />
+        </mxCell>
+        <mxCell id="logic1" value="PDF сохраняется; изображения и их кадры переводятся в PDF." style="text;html=1;align=left;verticalAlign=top;fontSize=18;fontColor=#55708F;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="547" width="990" height="78" />
+        </mxCell>
+        <mxCell id="stack1" value="Pillow · img2pdf" style="text;html=1;align=left;fontSize=15;fontStyle=1;fontColor=#397BD5;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="632" width="990" height="25" />
+        </mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8FB3;strokeWidth=2;" edge="1" parent="1" source="n0" target="n1">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n2" value="" style="rounded=1;arcSize=12;html=1;fillColor=#FFFFFF;strokeColor=#D3DEE9;shadow=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="140" y="690" width="1120" height="170" />
+        </mxCell>
+        <mxCell id="num2" value="03" style="rounded=1;arcSize=24;html=1;fillColor=#397BD5;strokeColor=none;fontColor=#FFFFFF;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="160" y="708" width="56" height="48" />
+        </mxCell>
+        <mxCell id="heading2" value="Анализ PDF и текстового слоя" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#17304E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="706" width="980" height="38" />
+        </mxCell>
+        <mxCell id="logic2" value="Проверяем страницы и качество существующего текста.&lt;br&gt;В текущем пути Docling страницы всё равно проходят OCR." style="text;html=1;align=left;verticalAlign=top;fontSize=18;fontColor=#55708F;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="747" width="990" height="78" />
+        </mxCell>
+        <mxCell id="stack2" value="pypdfium2 · docpipe.io.textlayer" style="text;html=1;align=left;fontSize=15;fontStyle=1;fontColor=#397BD5;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="832" width="990" height="25" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8FB3;strokeWidth=2;" edge="1" parent="1" source="n1" target="n2">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n3" value="" style="rounded=1;arcSize=12;html=1;fillColor=#FFFFFF;strokeColor=#D3DEE9;shadow=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="140" y="890" width="1120" height="170" />
+        </mxCell>
+        <mxCell id="num3" value="04" style="rounded=1;arcSize=24;html=1;fillColor=#397BD5;strokeColor=none;fontColor=#FFFFFF;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="160" y="908" width="56" height="48" />
+        </mxCell>
+        <mxCell id="heading3" value="Растрирование страниц" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#17304E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="906" width="980" height="38" />
+        </mxCell>
+        <mxCell id="logic3" value="Получаем изображение каждой страницы, обычно при 300 DPI.&lt;br&gt;Сохраняем размеры страницы для пересчёта координат." style="text;html=1;align=left;verticalAlign=top;fontSize=18;fontColor=#55708F;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="947" width="990" height="78" />
+        </mxCell>
+        <mxCell id="stack3" value="pypdfium2 · Pillow" style="text;html=1;align=left;fontSize=15;fontStyle=1;fontColor=#397BD5;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1032" width="990" height="25" />
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8FB3;strokeWidth=2;" edge="1" parent="1" source="n2" target="n3">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n4" value="" style="rounded=1;arcSize=12;html=1;fillColor=#FFFFFF;strokeColor=#D3DEE9;shadow=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="140" y="1205" width="1120" height="170" />
+        </mxCell>
+        <mxCell id="num4" value="05" style="rounded=1;arcSize=24;html=1;fillColor=#138B7B;strokeColor=none;fontColor=#FFFFFF;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="160" y="1223" width="56" height="48" />
+        </mxCell>
+        <mxCell id="heading4" value="Распознавание и анализ структуры" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#17304E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1221" width="980" height="38" />
+        </mxCell>
+        <mxCell id="logic4" value="Находим текст, заголовки, оглавление, таблицы и иллюстрации.&lt;br&gt;Распознаём русский текст и структуру ячеек." style="text;html=1;align=left;verticalAlign=top;fontSize=18;fontColor=#55708F;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1262" width="990" height="78" />
+        </mxCell>
+        <mxCell id="stack4" value="Docling · RapidOCR / PP-OCRv5 eslav · TableFormer" style="text;html=1;align=left;fontSize=15;fontStyle=1;fontColor=#138B7B;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1347" width="990" height="25" />
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8FB3;strokeWidth=2;" edge="1" parent="1" source="n3" target="n4">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n5" value="" style="rounded=1;arcSize=12;html=1;fillColor=#FFFFFF;strokeColor=#D3DEE9;shadow=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="140" y="1405" width="1120" height="170" />
+        </mxCell>
+        <mxCell id="num5" value="06" style="rounded=1;arcSize=24;html=1;fillColor=#138B7B;strokeColor=none;fontColor=#FFFFFF;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="160" y="1423" width="56" height="48" />
+        </mxCell>
+        <mxCell id="heading5" value="Единое представление страницы" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#17304E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1421" width="980" height="38" />
+        </mxCell>
+        <mxCell id="logic5" value="Переводим результат в блоки с текстом и координатами.&lt;br&gt;Сохраняем строки, столбцы и объединения ячеек." style="text;html=1;align=left;verticalAlign=top;fontSize=18;fontColor=#55708F;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1462" width="990" height="78" />
+        </mxCell>
+        <mxCell id="stack5" value="Адаптер Docling · IR · Pydantic" style="text;html=1;align=left;fontSize=15;fontStyle=1;fontColor=#138B7B;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1547" width="990" height="25" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8FB3;strokeWidth=2;" edge="1" parent="1" source="n4" target="n5">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n6" value="" style="rounded=1;arcSize=12;html=1;fillColor=#FFFFFF;strokeColor=#D3DEE9;shadow=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="140" y="1605" width="1120" height="170" />
+        </mxCell>
+        <mxCell id="num6" value="07" style="rounded=1;arcSize=24;html=1;fillColor=#138B7B;strokeColor=none;fontColor=#FFFFFF;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="160" y="1623" width="56" height="48" />
+        </mxCell>
+        <mxCell id="heading6" value="Восстановление пропущенного текста" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#17304E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1621" width="980" height="38" />
+        </mxCell>
+        <mxCell id="logic6" value="Собираем строки оглавления; добавляем уверенные OCR-строки,&lt;br&gt;не покрытые существующими блоками." style="text;html=1;align=left;verticalAlign=top;fontSize=18;fontColor=#55708F;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1662" width="990" height="78" />
+        </mxCell>
+        <mxCell id="stack6" value="document_index · parsed OCR cells · ocr_recovery" style="text;html=1;align=left;fontSize=15;fontStyle=1;fontColor=#138B7B;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1747" width="990" height="25" />
+        </mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8FB3;strokeWidth=2;" edge="1" parent="1" source="n5" target="n6">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n7" value="" style="rounded=1;arcSize=12;html=1;fillColor=#FFFFFF;strokeColor=#D3DEE9;shadow=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="140" y="1805" width="1120" height="170" />
+        </mxCell>
+        <mxCell id="num7" value="08" style="rounded=1;arcSize=24;html=1;fillColor=#138B7B;strokeColor=none;fontColor=#FFFFFF;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="160" y="1823" width="56" height="48" />
+        </mxCell>
+        <mxCell id="heading7" value="Извлечение иллюстраций" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#17304E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1821" width="980" height="38" />
+        </mxCell>
+        <mxCell id="logic7" value="Объединяем и фильтруем области изображений.&lt;br&gt;Вырезаем иллюстрации и сохраняем файлы для экспорта." style="text;html=1;align=left;verticalAlign=top;fontSize=18;fontColor=#55708F;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1862" width="990" height="78" />
+        </mxCell>
+        <mxCell id="stack7" value="Pillow · docpipe.stages.figures" style="text;html=1;align=left;fontSize=15;fontStyle=1;fontColor=#138B7B;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="1947" width="990" height="25" />
+        </mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8FB3;strokeWidth=2;" edge="1" parent="1" source="n6" target="n7">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n8" value="" style="rounded=1;arcSize=12;html=1;fillColor=#FFFFFF;strokeColor=#D3DEE9;shadow=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="140" y="2005" width="1120" height="170" />
+        </mxCell>
+        <mxCell id="num8" value="09" style="rounded=1;arcSize=24;html=1;fillColor=#138B7B;strokeColor=none;fontColor=#FFFFFF;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="160" y="2023" width="56" height="48" />
+        </mxCell>
+        <mxCell id="heading8" value="Порядок чтения и очистка" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#17304E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="2021" width="980" height="38" />
+        </mxCell>
+        <mxCell id="logic8" value="Упорядочиваем блоки по координатам, связываем подписи.&lt;br&gt;Очищаем текст; обрабатываем колонтитулы по настройкам." style="text;html=1;align=left;verticalAlign=top;fontSize=18;fontColor=#55708F;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="2062" width="990" height="78" />
+        </mxCell>
+        <mxCell id="stack8" value="assign_order · attach_captions · postprocess" style="text;html=1;align=left;fontSize=15;fontStyle=1;fontColor=#138B7B;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="2147" width="990" height="25" />
+        </mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8FB3;strokeWidth=2;" edge="1" parent="1" source="n7" target="n8">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n9" value="" style="rounded=1;arcSize=12;html=1;fillColor=#FFFFFF;strokeColor=#D3DEE9;shadow=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="140" y="2320" width="1120" height="170" />
+        </mxCell>
+        <mxCell id="num9" value="10" style="rounded=1;arcSize=24;html=1;fillColor=#8463BA;strokeColor=none;fontColor=#FFFFFF;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="160" y="2338" width="56" height="48" />
+        </mxCell>
+        <mxCell id="heading9" value="Сборка документа и размещение" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#17304E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="2336" width="980" height="38" />
+        </mxCell>
+        <mxCell id="logic9" value="Объединяем обработанные страницы в IR документа.&lt;br&gt;Для позиционных форматов рассчитываем переносы,&lt;br&gt;высоты таблиц и смещения при пересечениях текста." style="text;html=1;align=left;verticalAlign=top;fontSize=18;fontColor=#55708F;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="2377" width="990" height="78" />
+        </mxCell>
+        <mxCell id="stack9" value="Document IR · text_layout · table_layout" style="text;html=1;align=left;fontSize=15;fontStyle=1;fontColor=#8463BA;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="2462" width="990" height="25" />
+        </mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8FB3;strokeWidth=2;" edge="1" parent="1" source="n8" target="n9">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n10" value="" style="rounded=1;arcSize=12;html=1;fillColor=#FFFFFF;strokeColor=#D3DEE9;shadow=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="140" y="2520" width="1120" height="170" />
+        </mxCell>
+        <mxCell id="num10" value="11" style="rounded=1;arcSize=24;html=1;fillColor=#8463BA;strokeColor=none;fontColor=#FFFFFF;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="160" y="2538" width="56" height="48" />
+        </mxCell>
+        <mxCell id="heading10" value="Экспорт результата" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#17304E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="2536" width="980" height="38" />
+        </mxCell>
+        <mxCell id="logic10" value="Создаём DOCX, HTML, Markdown, JSON и варианты PDF.&lt;br&gt;В DOCX / HTML — текст, таблицы и встроенные изображения." style="text;html=1;align=left;verticalAlign=top;fontSize=18;fontColor=#55708F;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="2577" width="990" height="78" />
+        </mxCell>
+        <mxCell id="stack10" value="python-docx · HTML/CSS · ReportLab · pikepdf" style="text;html=1;align=left;fontSize=15;fontStyle=1;fontColor=#8463BA;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="2662" width="990" height="25" />
+        </mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8FB3;strokeWidth=2;" edge="1" parent="1" source="n9" target="n10">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="n11" value="" style="rounded=1;arcSize=12;html=1;fillColor=#FFFFFF;strokeColor=#D3DEE9;shadow=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="140" y="2720" width="1120" height="170" />
+        </mxCell>
+        <mxCell id="num11" value="12" style="rounded=1;arcSize=24;html=1;fillColor=#8463BA;strokeColor=none;fontColor=#FFFFFF;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="160" y="2738" width="56" height="48" />
+        </mxCell>
+        <mxCell id="heading11" value="Проверка результата" style="text;html=1;align=left;fontSize=24;fontStyle=1;fontColor=#17304E;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="2736" width="980" height="38" />
+        </mxCell>
+        <mxCell id="logic11" value="Проверяем текст, оглавление, таблицы, изображения и файлы.&lt;br&gt;Ошибки проверки не засчитываются как успешный результат." style="text;html=1;align=left;verticalAlign=top;fontSize=18;fontColor=#55708F;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="2777" width="990" height="78" />
+        </mxCell>
+        <mxCell id="stack11" value="docpipe.verify · checks" style="text;html=1;align=left;fontSize=15;fontStyle=1;fontColor=#8463BA;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="235" y="2862" width="990" height="25" />
+        </mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8FB3;strokeWidth=2;" edge="1" parent="1" source="n10" target="n11">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="note" value="Этапы 4–9 повторяются для каждой страницы. Проверки не гарантируют полного визуального совпадения.&lt;br&gt;DOCX-эталон используется только для оценки; исходная страница не служит фоном DOCX / HTML." style="text;html=1;fontSize=14;fontColor=#55708F;align=center;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="80" y="2900" width="1240" height="90" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

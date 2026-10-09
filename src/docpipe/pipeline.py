@@ -66,7 +66,11 @@ def parse(path: str | Path, config: AppConfig | None = None, engine: str="doclin
                             rel=str(Path("images")/path.name).replace("\\","/")
                             data=b.figure.model_copy(update={"file":rel,"width_px":pb.x1-pb.x0,"height_px":pb.y1-pb.y0}) if b.figure else None
                             if data: blocks[blocks.index(b)]=b.model_copy(update={"figure":data,"text":None})
-                    blocks=assign_order(blocks,raster.width_pt)
+                    # Paddle explicitly returns parsing_res_list in reading
+                    # order. Docling iterate_items traversal regressed on the
+                    # reference set, so keep geometric ordering for that lane.
+                    if eng.name not in {"paddleocr_vl", "ppstructure", "glm_ocr"}:
+                        blocks=assign_order(blocks,raster.width_pt)
                     blocks=attach_captions(blocks)
                     blocks=postprocess(blocks,config.render.headers_footers)
                     pages.append(Page(index=i,width_pt=raster.width_pt,height_pt=raster.height_pt,rotation=raster.rotation,raster_dpi=raster.dpi,size_px=raster.image.size,status=PageStatus.OK,text_layer=statuses[i],blocks=blocks))

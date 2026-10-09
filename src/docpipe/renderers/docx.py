@@ -5,13 +5,24 @@ from xml.sax.saxutils import escape
 
 from docx import Document as WordDocument
 from docx.enum.section import WD_SECTION
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_ROW_HEIGHT_RULE
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 from docx.shared import Pt
 
 from docpipe.ir import Block, BlockType, Document, Page
+from docpipe.renderers.table_layout import build_table_layout
+from docpipe.renderers.text_layout import collision_free_text_tops, estimate_text_height, wrap_text
+from docpipe.renderers.typography import (
+    BODY_FONT_PT,
+    BODY_LINE_SPACING,
+    FONT_FAMILY,
+    TABLE_FONT_PT,
+    text_style,
+)
 
 _EMU_PER_POINT = 12_700
+_TWIPS_PER_POINT = 20
 
 
 def _set_page(section, page: Page) -> None:
@@ -45,6 +56,7 @@ def _add_textbox(
     text: str,
     font_size: float,
     bold: bool = False,
+    italic: bool = False,
     border: bool = False,
 ) -> None:
     lines = text.splitlines() or [""]
@@ -54,14 +66,15 @@ def _add_textbox(
             escaped_lines.append("<w:br/>")
         escaped_lines.append(f'<w:t xml:space="preserve">{escape(line)}</w:t>')
     bold_xml = "<w:b/>" if bold else ""
+    italic_xml = "<w:i/>" if italic else ""
     font_half_points = max(10, round(font_size * 2))
     border_attrs = 'stroked="t" strokeweight="0.5pt"' if border else 'stroked="f"'
     namespaces = nsdecls("w") + ' xmlns:v="urn:schemas-microsoft-com:vml"'
     xml = f"""<w:pict {namespaces}>
       <v:shape id="{escape(shape_id)}" style="position:absolute;left:{x:.3f}pt;top:{y:.3f}pt;width:{max(width, 0.5):.3f}pt;height:{max(height, 0.5):.3f}pt;z-index:{z_index};mso-position-horizontal-relative:page;mso-position-vertical-relative:page;mso-wrap-style:none" {border_attrs} filled="f">
         <v:textbox inset="1pt,0,1pt,0"><w:txbxContent>
-          <w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="{max(20, round(font_half_points * 12))}" w:lineRule="exact"/></w:pPr>
-            <w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="{font_half_points}"/>{bold_xml}</w:rPr>{''.join(escaped_lines)}</w:r>
+          <w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="{max(20, round(font_half_points * BODY_LINE_SPACING * 10))}" w:lineRule="exact"/></w:pPr>
+            <w:r><w:rPr><w:rFonts w:ascii="{FONT_FAMILY}" w:hAnsi="{FONT_FAMILY}" w:eastAsia="{FONT_FAMILY}" w:cs="{FONT_FAMILY}"/><w:sz w:val="{font_half_points}"/>{bold_xml}{italic_xml}</w:rPr>{''.join(escaped_lines)}</w:r>
           </w:p>
         </w:txbxContent></v:textbox>
       </v:shape>
@@ -128,30 +141,119 @@ def _float_picture(
     drawing.replace(inline, anchor)
 
 
-def _fit_font_size(text: str, width: float, height: float, maximum: float) -> float:
-    """Estimate a readable font size that fits inside a positioned text box."""
-    available_width = max(1.0, width - 2.0)  # account for the textbox's 1pt insets
-    lines = text.splitlines() or [""]
-
-    def fits(size: float) -> bool:
-        chars_per_line = max(1, int(available_width / (size * 0.52)))
-        wrapped_lines = sum(max(1, (len(line) + chars_per_line - 1) // chars_per_line) for line in lines)
-        return wrapped_lines * size * 1.2 <= max(1.0, height)
-
-    # _add_textbox serializes font sizes in half-points and enforces a 5pt floor.
-    low, high = 5.0, max(5.0, maximum)
-    if not fits(low):
-        return low
-    for _ in range(16):
-        middle = (low + high) / 2
-        if fits(middle):
-            low = middle
-        else:
-            high = middle
-    return low
+def _set_table_borders(table) -> None:
+    tbl_pr = table._tbl.tblPr
+    borders = tbl_pr.find(qn("w:tblBorders"))
+    if borders is None:
+        borders = OxmlElement("w:tblBorders")
+        layout = tbl_pr.find(qn("w:tblLayout"))
+        index = tbl_pr.index(layout) if layout is not None else len(tbl_pr)
+        tbl_pr.insert(index, borders)
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        element = borders.find(qn(f"w:{edge}"))
+        if element is None:
+            element = OxmlElement(f"w:{edge}")
+            borders.append(element)
+        element.set(qn("w:val"), "single")
+        element.set(qn("w:sz"), "4")
+        element.set(qn("w:space"), "0")
+        element.set(qn("w:color"), "333333")
 
 
-def _add_block(doc: WordDocument, block: Block, page: Page, base: Path) -> None:
+def _anchor_table(table, block: Block, top: float | None = None) -> None:
+    """Float a native Word table at the OCR table's page coordinates."""
+    box = block.bbox
+    tbl_pr = table._tbl.tblPr
+    position = tbl_pr.find(qn("w:tblpPr"))
+    if position is None:
+        position = OxmlElement("w:tblpPr")
+        style = tbl_pr.find(qn("w:tblStyle"))
+        tbl_pr.insert(tbl_pr.index(style) + 1 if style is not None else 0, position)
+    for name, value in {
+        "horzAnchor": "page",
+        "vertAnchor": "page",
+        "tblpX": str(round(box.x0 * _TWIPS_PER_POINT)),
+        "tblpY": str(round((box.y0 if top is None else top) * _TWIPS_PER_POINT)),
+        "leftFromText": "0",
+        "rightFromText": "0",
+        "topFromText": "0",
+        "bottomFromText": "0",
+    }.items():
+        position.set(qn(f"w:{name}"), value)
+
+
+def _format_table_cell(cell, text: str) -> None:
+    cell.text = text
+    cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+    cell_properties = cell._tc.get_or_add_tcPr()
+    shading = cell_properties.find(qn("w:shd"))
+    if shading is None:
+        shading = OxmlElement("w:shd")
+        cell_properties.append(shading)
+    shading.set(qn("w:val"), "clear")
+    shading.set(qn("w:color"), "auto")
+    shading.set(qn("w:fill"), "FFFFFF")
+    for paragraph in cell.paragraphs:
+        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_after = Pt(0)
+        paragraph.paragraph_format.line_spacing = 1.0
+        for run in paragraph.runs:
+            run.font.name = FONT_FAMILY
+            run.font.size = Pt(TABLE_FONT_PT)
+
+
+def _add_table(doc: WordDocument, block: Block, top: float | None = None) -> None:
+    layout = build_table_layout(block)
+    table = doc.add_table(rows=layout.rows, cols=layout.cols)
+    table.autofit = False
+    _anchor_table(table, block, top)
+    _set_table_borders(table)
+
+    tbl_pr = table._tbl.tblPr
+    tbl_width = tbl_pr.find(qn("w:tblW"))
+    if tbl_width is not None:
+        tbl_width.set(qn("w:w"), str(round((block.bbox.x1 - block.bbox.x0) * _TWIPS_PER_POINT)))
+        tbl_width.set(qn("w:type"), "dxa")
+
+    margins = tbl_pr.find(qn("w:tblCellMar"))
+    if margins is None:
+        margins = OxmlElement("w:tblCellMar")
+        look = tbl_pr.find(qn("w:tblLook"))
+        tbl_pr.insert(tbl_pr.index(look) if look is not None else len(tbl_pr), margins)
+    for edge, value in (("top", 20), ("bottom", 20), ("start", 40), ("end", 40)):
+        item = margins.find(qn(f"w:{edge}"))
+        if item is None:
+            item = OxmlElement(f"w:{edge}")
+            margins.append(item)
+        item.set(qn("w:w"), str(value))
+        item.set(qn("w:type"), "dxa")
+
+    for col_index, width in enumerate(layout.column_widths):
+        table.columns[col_index].width = Pt(width)
+        for row in table.rows:
+            row.cells[col_index].width = Pt(width)
+    for row_index, height in enumerate(layout.row_heights):
+        row = table.rows[row_index]
+        row.height = Pt(height)
+        row.height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
+        tr_pr = row._tr.get_or_add_trPr()
+        if tr_pr.find(qn("w:cantSplit")) is None:
+            tr_pr.append(OxmlElement("w:cantSplit"))
+        for cell in row.cells:
+            _format_table_cell(cell, "")
+
+    for placement in layout.cells:
+        cell = table.cell(placement.row, placement.col)
+        if placement.rowspan > 1 or placement.colspan > 1:
+            last = table.cell(
+                placement.row + placement.rowspan - 1,
+                placement.col + placement.colspan - 1,
+            )
+            cell = cell.merge(last)
+        _format_table_cell(cell, placement.text)
+
+
+def _add_block(doc: WordDocument, block: Block, page: Page, base: Path, text_top: float | None = None) -> None:
     box = block.bbox
     width = max(0.5, box.x1 - box.x0)
     height = max(0.5, box.y1 - box.y0)
@@ -167,37 +269,31 @@ def _add_block(doc: WordDocument, block: Block, page: Page, base: Path) -> None:
         _float_picture(picture, box.x0, box.y0, width, height, z_index)
         return
     if block.type == BlockType.TABLE and block.table:
-        for cell_index, cell in enumerate(block.table.cells):
-            cell_box = cell.bbox
-            cell_height = max(0.5, cell_box.y1 - cell_box.y0)
-            cell_width = max(0.5, cell_box.x1 - cell_box.x0)
-            font_size = _fit_font_size(cell.text, cell_width, cell_height, min(16.0, cell_height * 0.68))
-            _add_textbox(
-                doc,
-                shape_id=f"docpipe-table-{page.index}-{block.order}-{cell_index}",
-                x=cell_box.x0,
-                y=cell_box.y0,
-                width=cell_box.x1 - cell_box.x0,
-                height=cell_height,
-                z_index=z_index,
-                text=cell.text,
-                font_size=font_size,
-                border=True,
-            )
+        _add_table(doc, block, text_top)
         return
     if block.text:
-        font_size = _fit_font_size(block.text, width, height, min(24.0, height * 0.78))
+        if block.type == BlockType.LIST_ITEM:
+            text = chr(8226) + " " + block.text
+        else:
+            text = block.text
+        font_size, bold, italic = text_style(block.type.value)
+        text = wrap_text(text, width, (font_size, bold, italic))
+        content_height = max(
+            height,
+            estimate_text_height(text, width, (font_size, bold, italic)),
+        )
         _add_textbox(
             doc,
             shape_id=f"docpipe-text-{page.index}-{block.order}",
             x=box.x0,
-            y=box.y0,
+            y=box.y0 if text_top is None else text_top,
             width=width,
-            height=height,
+            height=content_height,
             z_index=z_index,
-            text=block.text,
+            text=text,
             font_size=font_size,
-            bold=block.type == BlockType.HEADING,
+            bold=bold,
+            italic=italic,
         )
 
 
@@ -206,12 +302,16 @@ def render(document: Document, out: Path, base_dir: Path | None = None) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     base = base_dir or out.parent
     doc = WordDocument()
-    doc.styles["Normal"].font.name = "Arial"
+    doc.styles["Normal"].font.name = FONT_FAMILY
+    doc.styles["Normal"].font.size = Pt(BODY_FONT_PT)
     if document.pages:
         _set_page(doc.sections[0], document.pages[0])
     for index, page in enumerate(document.pages):
+        text_tops = collision_free_text_tops(
+            page.blocks, lambda block: text_style(block.type.value)
+        )
         for block in sorted(page.blocks, key=lambda item: item.order):
-            _add_block(doc, block, page, base)
+            _add_block(doc, block, page, base, text_tops.get(id(block)))
         if index + 1 < len(document.pages):
             next_section = doc.add_section(WD_SECTION.NEW_PAGE)
             _set_page(next_section, document.pages[index + 1])

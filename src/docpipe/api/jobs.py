@@ -244,13 +244,19 @@ class JobManager:
                     engine_instance=engine,
                     progress_callback=lambda current, total: self._progress(job, current, total),
                 )
-            if job.engine != "fake" and recognized_text_chars(doc) == 0:
-                raise OutputQualityError(
-                    "OCR returned no text. Check the input scan and Docling model configuration."
-                )
             json_path = out / "document.json"
             json_path.write_text(doc.model_dump_json(indent=2), encoding="utf-8")
             job.document_json = json_path
+            if job.engine != "fake" and recognized_text_chars(doc) == 0:
+                reasons = [f"Страница {page.index + 1}: {warning}"
+                           for page in doc.pages for warning in page.warnings]
+                detail = "; ".join(reasons[:3]) or (
+                    "Движок вернул только изображения или пустые текстовые области. "
+                    "Проверьте журнал сервера распознавания."
+                )
+                raise OutputQualityError(
+                    f"Движок {job.engine} не вернул текст. {detail}"
+                )
             self._render_outputs(doc, job, out)
             verification = verify_document(out)
             (out / "verification.json").write_text(

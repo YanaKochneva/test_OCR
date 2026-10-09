@@ -1,0 +1,43 @@
+# Full layout pipeline; local Ollama performs recognition.
+server:
+  host: 127.0.0.1
+  port: 5002
+logging:
+  level: DEBUG
+pipeline:
+  maas:
+    enabled: false
+  max_workers: 1
+  ocr_api:
+    api_host: 127.0.0.1
+    api_port: 11434
+    api_path: /api/generate
+    model: glm-ocr:latest
+    api_mode: ollama_generate
+    request_timeout: 300
+  page_loader:
+    temperature: 0.0
+    max_tokens: 2048
+    top_p: 1.0
+    top_k: 1
+    repetition_penalty: 1.0
+    task_prompt_mapping:
+      text: "Text Recognition:"
+      table: "Table Recognition:"
+      formula: "Formula Recognition:"
+  layout:
+    model_dir: PaddlePaddle/PP-DocLayoutV3_safetensors
+    device: cpu
+    batch_size: 1
+    label_task_mapping:
+      text: [abstract, algorithm, content, doc_title, figure_title, paragraph_title, reference_content, text, vertical_text, vision_footnote, seal, formula_number, header, footer, number, footnote, aside_text, reference]
+      table: [table]
+      formula: [display_formula, inline_formula]
+      skip: [chart, image, footer_image, header_image]
+  result_formatter:
+    enable_merge_text_blocks: false
+    label_visualization_mapping:
+      text: [abstract, algorithm, content, doc_title, figure_title, paragraph_title, reference_content, text, vertical_text, vision_footnote, seal, formula_number]
+      table: [table]
+      formula: [display_formula, inline_formula]
+      image: [chart, image, footer_image, header_image]

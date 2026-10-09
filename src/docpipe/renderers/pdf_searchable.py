@@ -8,6 +8,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 from docpipe.ir import Document
+from docpipe.renderers.text_layout import wrap_text
 from docpipe.renderers.fonts import require_font
 
 
@@ -26,18 +27,30 @@ def _make_overlay(document: Document, page_index: int, width: float, height: flo
     c.setFont(font, 8)
     text_mode = 3  # PDF text rendering mode: invisible.
     for block in sorted(document.pages[page_index].blocks, key=lambda item: item.order):
-        if not block.text:
-            continue
-        x = block.bbox.x0
-        y = height - block.bbox.y1
-        size = max(4.0, min(18.0, block.bbox.y1 - block.bbox.y0))
-        text = c.beginText(x, y)
-        text.setFont(font, size)
-        text.setTextRenderMode(text_mode)
-        # Для многострочного блока сохраняем слова внутри исходной рамки.
-        for line in block.text.splitlines() or [""]:
-            text.textLine(line)
-        c.drawText(text)
+        regions = ([(cell.text, cell.bbox) for cell in sorted(
+            block.table.cells, key=lambda cell: (cell.row, cell.col)
+        )] if block.table and block.table.cells else [(block.text, block.bbox)])
+        for content, box in regions:
+            if not content:
+                continue
+            available_width = max(1, box.x1 - box.x0)
+            available_height = max(1, box.y1 - box.y0)
+            size = min(11, available_height)
+            # Invisible text must still stay within the source region, otherwise
+            # PDF extractors lose lines outside the page or corrupt selection.
+            while True:
+                lines = wrap_text(content, available_width, (size, False, False),
+                                  font_metric_mode="dejavu").splitlines() or [""]
+                if len(lines) * size <= available_height or size <= .5:
+                    break
+                size = max(.5, size * .85)
+            text = c.beginText(box.x0, height - box.y0 - size)
+            text.setFont(font, size)
+            text.setLeading(size)
+            text.setTextRenderMode(text_mode)
+            for line in lines:
+                text.textLine(line)
+            c.drawText(text)
     c.showPage()
     c.save()
     return buf.getvalue()

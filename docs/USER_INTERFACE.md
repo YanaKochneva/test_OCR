@@ -9,7 +9,6 @@
 В PowerShell из корня проекта:
 
 ```powershell
-$env:DOCPIPE_API__API_KEY = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
 docker compose -f deploy/docker-compose.yml up --build -d
 ```
 
@@ -20,7 +19,7 @@ Invoke-RestMethod http://localhost:8000/readyz
 Start-Process http://localhost:8000/
 ```
 
-Введите тот же ключ, который задан в `DOCPIPE_API__API_KEY`. Страница использует ключ только в памяти вкладки. Результат выдаётся ZIP-архивом; в нём находятся выбранные форматы, включая JSON с распознанным содержимым.
+Ключ для обработки через веб-интерфейс не требуется. Результат скачивается ZIP-архивом.
 
 Входные форматы: PDF, PNG, JPG/JPEG, TIFF, BMP и WEBP. Эталонный DOCX не является входным сканом; его можно использовать для последующей оценки через `docpipe eval`.
 
@@ -29,3 +28,5 @@ Start-Process http://localhost:8000/
 ```powershell
 docker compose -f deploy/docker-compose.yml down
 ```
+
+Для отдельного API с обязательной авторизацией задайте `DOCPIPE_API__REQUIRE_API_KEY=true` и `DOCPIPE_API__API_KEY` (не менее 32 символов). Веб-интерфейс рассчитан на обычный режим без обязательного ключа.

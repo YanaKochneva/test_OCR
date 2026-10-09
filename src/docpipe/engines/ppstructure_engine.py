@@ -154,7 +154,10 @@ class PPStructureEngine(LayoutOcrEngine):
                 "PP-StructureV3 Result не предоставил публичный json-словарь; "
                 "адаптер не использует приватные поля"
             )
-        return raw
+        data = raw.get("res", raw)
+        if not isinstance(data, dict):
+            raise ModelError("Paddle Result.json prediction must be a dictionary")
+        return data
 
     @classmethod
     def _to_blocks(

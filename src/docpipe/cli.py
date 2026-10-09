@@ -39,8 +39,27 @@ def main() -> int:
     e.add_argument("ir", type=Path, help="Generated document.json")
     e.add_argument("--output", type=Path, help="Optional JSON report path")
 
+    b = sub.add_parser("benchmark", help="Evaluate paired reference/scan subdirectories")
+    b.add_argument("root", type=Path)
+    b.add_argument("--out", type=Path, required=True)
+    b.add_argument("--engine", default="docling")
+    b.add_argument("--config", type=Path)
+    b.add_argument("--timeout", type=int, default=1800)
+    b.add_argument("--dry-run", action="store_true", help="Validate pairs without running OCR")
+    b.add_argument("--cases", nargs="+", help="Only these relative subdirectory names")
+
     a = p.parse_args()
     cfg = load_config(getattr(a, "config", None))
+
+    if a.cmd == "benchmark":
+        from docpipe.benchmark import run_benchmark
+        try:
+            report = run_benchmark(a.root, a.out, engine=a.engine, config=a.config,
+                                   timeout=a.timeout, dry_run=a.dry_run, selected_cases=a.cases)
+        except ValueError as exc:
+            p.error(str(exc))
+        print(json.dumps(report["summary"], ensure_ascii=False, indent=2))
+        return 0 if all(c["status"] in {"ready", "evaluated"} for c in report["cases"]) else 1
 
     if a.cmd == "doctor":
         from docpipe.doctor import run_doctor
@@ -55,7 +74,12 @@ def main() -> int:
             render_pdf_positional, render_pdf_searchable,
         )
         a.out.mkdir(parents=True, exist_ok=True)
-        doc = parse(a.file, cfg, engine=a.engine, out_dir=a.out)
+        doc = parse(
+            a.file, cfg, engine=a.engine, out_dir=a.out,
+            progress_callback=lambda done, total: print(
+                f"OCR pages: {done}/{total}", flush=True
+            ),
+        )
         (a.out / "document.json").write_text(doc.model_dump_json(indent=2), encoding="utf-8")
         outputs = set(a.outputs) | {"md", "html", "pdf-flow", "pdf-searchable"}
         if "md" in outputs:

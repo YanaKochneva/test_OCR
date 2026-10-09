@@ -64,9 +64,8 @@ class DoclingEngine(LayoutOcrEngine):
                 "Install it with the appropriate optional dependency."
             ) from exc
 
-        self.version = str(
-            getattr(docling, "__version__", "unknown")
-        )
+        from importlib.metadata import version
+        self.version = version("docling")
 
         self._assert_public_api(
             PdfPipelineOptions=PdfPipelineOptions,
@@ -78,6 +77,10 @@ class DoclingEngine(LayoutOcrEngine):
         )
 
         pipeline_options = PdfPipelineOptions()
+        # Retain OCR lines until the one-page result has been reconciled with
+        # layout blocks; otherwise assembly can silently discard unassigned text.
+        if hasattr(pipeline_options, "generate_parsed_pages"):
+            pipeline_options.generate_parsed_pages = True
 
         artifacts_path = os.getenv("DOCLING_ARTIFACTS_PATH")
         if artifacts_path:
@@ -222,6 +225,21 @@ class DoclingEngine(LayoutOcrEngine):
                 if block is not None:
                     blocks.append(block)
 
+            from types import SimpleNamespace
+            from docpipe.stages.ocr_recovery import recover_unassigned_lines
+
+            raw_lines = []
+            for parsed_page in getattr(result, "pages", []):
+                for cell in getattr(parsed_page, "cells", []):
+                    cell_box = self._bbox_from_provenance(
+                        SimpleNamespace(bbox=cell.to_bounding_box()),
+                        page_meta.width_pt, page_meta.height_pt, image.width, image.height,
+                    )
+                    if (0 <= cell_box.x0 <= cell_box.x1 <= page_meta.width_pt
+                            and 0 <= cell_box.y0 <= cell_box.y1 <= page_meta.height_pt):
+                        raw_lines.append((cell.text, cell_box, float(cell.confidence)))
+            blocks = recover_unassigned_lines(blocks, raw_lines, page_meta.height_pt)
+
             return [
                 block.model_copy(update={"order": index})
                 for index, block in enumerate(blocks)
@@ -312,6 +330,7 @@ class DoclingEngine(LayoutOcrEngine):
             "page_footer": BlockType.FOOTER,
             "page_number": BlockType.PAGE_NUMBER,
             "footnote": BlockType.FOOTNOTE,
+            "document_index": BlockType.TEXT,
             "picture": BlockType.FIGURE,
             "chart": BlockType.FIGURE,
             "table": BlockType.TABLE,
@@ -319,10 +338,22 @@ class DoclingEngine(LayoutOcrEngine):
 
         block_type = mapping.get(label)
 
+        if block_type is None and self._extract_text(item):
+            block_type = BlockType.TEXT
         if block_type is None:
             return None
 
         text = self._extract_text(item)
+        if label == "document_index":
+            rows: dict[int, list[tuple[int, str]]] = {}
+            seen = set()
+            for cell in getattr(getattr(item, "data", None), "table_cells", []):
+                key = (cell.start_row_offset_idx, cell.start_col_offset_idx)
+                if key not in seen:
+                    seen.add(key)
+                    rows.setdefault(key[0], []).append((key[1], cell.text))
+            text = "\n".join(" ".join(t for _, t in sorted(row))
+                             for _, row in sorted(rows.items()))
 
         # Docling's own reference, e.g. "#/texts/2".
         # Fall back to Python object identity if unavailable.
@@ -345,30 +376,47 @@ class DoclingEngine(LayoutOcrEngine):
 
             cells: list[TableCell] = []
 
-            grid = getattr(table_data, "grid", None) or []
+            canonical_cells = getattr(table_data, "table_cells", None)
+            grid = [canonical_cells] if canonical_cells is not None else (getattr(table_data, "grid", None) or [])
+            seen_cells = set()
 
             for row_idx, row in enumerate(grid):
                 for col_idx, cell in enumerate(row):
                     if cell is None:
                         continue
+                    cell_key = (
+                        getattr(cell, "start_row_offset_idx", row_idx),
+                        getattr(cell, "start_col_offset_idx", col_idx),
+                    )
+                    if cell_key in seen_cells:
+                        continue
+                    seen_cells.add(cell_key)
 
                     cell_text = str(getattr(cell, "text", "") or "")
 
                     cell_bbox = getattr(cell, "bbox", None)
 
-                    # Some cells in Docling's grid are placeholders
-                    # for merged/empty cells and have no bbox.
+                    # Retain actual text even when cell geometry is absent.
+                    # Empty grid placeholders still have nothing to preserve.
                     if cell_bbox is None:
-                        continue
+                        if not cell_text.strip():
+                            continue
+                        from types import SimpleNamespace
+                        rows = max(1, int(getattr(table_data, "num_rows", 1)))
+                        cols = max(1, int(getattr(table_data, "num_cols", 1)))
+                        row, col = cell_key
+                        scale = page_meta.dpi / 72
+                        cell_bbox = SimpleNamespace(
+                            l=(bbox.x0 + (bbox.x1 - bbox.x0) * col / cols) * scale,
+                            r=(bbox.x0 + (bbox.x1 - bbox.x0) * min(cols, col + getattr(cell, "col_span", 1)) / cols) * scale,
+                            t=(bbox.y0 + (bbox.y1 - bbox.y0) * row / rows) * scale,
+                            b=(bbox.y0 + (bbox.y1 - bbox.y0) * min(rows, row + getattr(cell, "row_span", 1)) / rows) * scale,
+                        )
 
                     cell_x0 = float(cell_bbox.l)
                     cell_x1 = float(cell_bbox.r)
                     cell_y0 = float(cell_bbox.t)
                     cell_y1 = float(cell_bbox.b)
-
-                    scale_x = page_meta.width_pt / page_meta.dpi * 72 / (
-                        page_meta.width_pt / (page_meta.width_pt * page_meta.dpi / 72)
-                    )
 
                     # Docling table-cell coordinates are already TOPLEFT
                     # pixel coordinates for the rasterized page.
@@ -464,6 +512,7 @@ class DoclingEngine(LayoutOcrEngine):
             bbox=bbox,
             order=0,
             text=text,
+            source_label=label,
         )
 
     @staticmethod
@@ -519,15 +568,18 @@ class DoclingEngine(LayoutOcrEngine):
             kwargs["use_gpu"] = False
 
         if "mode" in params:
-            annotation = params["mode"].annotation
-
             try:
-                kwargs["mode"] = getattr(
-                    annotation,
-                    "FULL_PAGE",
-                )
-            except AttributeError:
+                # With postponed annotations, inspect.signature() often
+                # returns a string here. Import the enum itself so OCR cannot
+                # silently fall back to Docling's PDF-aware default mode.
+                from docling.datamodel.pipeline_options import OcrMode
+
+                kwargs["mode"] = OcrMode.FULL_PAGE
+            except (ImportError, AttributeError):
                 pass
+
+        if "mode" not in kwargs and "force_full_page_ocr" in params:
+            kwargs["force_full_page_ocr"] = True
 
         return cls(**kwargs)
 

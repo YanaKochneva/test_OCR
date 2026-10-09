@@ -12,7 +12,13 @@ def words(text: str) -> list[str]:
 
 def ir_words(doc: Document) -> list[str]:
     blocks = (block for page in doc.pages for block in sorted(page.blocks, key=lambda item: item.order))
-    return words(" ".join(block.text or "" for block in blocks))
+    parts = []
+    for block in blocks:
+        if block.table and block.table.cells:
+            parts.extend(cell.text for cell in sorted(block.table.cells, key=lambda c: (c.row, c.col)))
+        else:
+            parts.append(block.text or "")
+    return words(" ".join(parts))
 
 
 def text_match(doc: Document, text: str) -> dict:
@@ -65,6 +71,35 @@ def _figure_leakage(doc: Document) -> list[dict]:
                     leaks.append({"page": page.index + 1, "block": block.id, "figure": figure.id})
                     break
     return leaks
+
+
+def _toc_coverage(doc: Document) -> list[str]:
+    """Find contents pages where OCR captured the title but lost its entries."""
+    problems: list[str] = []
+    for page in doc.pages:
+        headings = [
+            block for block in page.blocks
+            if block.text and "содержание" in block.text.casefold()
+        ]
+        for heading in headings:
+            following: list[str] = []
+            # Some engines return a whole page as one multiline text block.
+            # Preserve entries that follow the title inside that same block.
+            remainder = re.split("содержание", heading.text or "", maxsplit=1, flags=re.IGNORECASE)
+            if len(remainder) > 1 and remainder[1].strip():
+                following.append(remainder[1].strip())
+            for block in page.blocks:
+                if block is heading or block.bbox.y0 < heading.bbox.y0:
+                    continue
+                if block.text and block.text.strip():
+                    following.extend(line.strip() for line in block.text.splitlines() if line.strip())
+                if block.table:
+                    following.extend(cell.text.strip() for cell in block.table.cells if cell.text.strip())
+            recognized = " ".join(following)
+            # A title or stray page number alone is not a recognized TOC.
+            if len(recognized) < 60 or len(following) < 3:
+                problems.append(f"page {page.index + 1}: contents heading has only {len(following)} recognized entries")
+    return problems
 
 
 def _verify_pdf(doc: Document, out_dir: Path, checks: list[dict]) -> None:
@@ -122,6 +157,12 @@ def verify_document(target: Path | str) -> dict:
         return {"ok": False, "result": "FAIL", "checks": [_check("ir_valid", "FAIL", str(exc))]}
 
     checks.append(_check("ir_valid", "PASS", f"schema_version={doc.schema_version}, engine={doc.engine.name}"))
+    toc_errors = _toc_coverage(doc)
+    # Keep a recoverable OCR omission visible without making every artifact
+    # inaccessible to the user. A missing TOC is a quality warning, not a
+    # structural corruption of the generated document bundle.
+    checks.append(_check("table_of_contents", "WARN" if toc_errors else "PASS",
+                         "; ".join(toc_errors) if toc_errors else "contents pages include recognized entries"))
     text_chars = sum(
         len((block.text or "").strip())
         + (
@@ -196,10 +237,10 @@ def verify_document(target: Path | str) -> dict:
         path = out_dir / name
         if not path.is_file():
             flow_errors.append(f"{name} missing")
-            continue
-        content = path.read_text(encoding="utf-8", errors="replace")
-        flow_errors.extend(f"{name}: {item.figure.file} absent" for item in figures
-                           if item.figure and item.figure.file and item.figure.file not in content)
+        else:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            flow_errors.extend(f"{name}: {item.figure.file} absent" for item in figures
+                               if item.figure and item.figure.file and item.figure.file not in content)
     checks.append(_check("figure_flow", "FAIL" if flow_errors else "PASS",
                          "; ".join(flow_errors[:10]) if flow_errors else "figures referenced in Markdown and HTML"))
 

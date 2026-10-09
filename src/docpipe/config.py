@@ -54,6 +54,7 @@ class ApiConfig(BaseModel):
     sync_max_pages: int = Field(default=10, ge=1)
     sync_timeout_seconds: int = Field(default=600, ge=1)
     shutdown_timeout_seconds: int = Field(default=300, ge=1)
+    require_api_key: bool = False
     api_key: str | None = Field(default=None, min_length=32)
 
 

@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from docpipe.api.jobs import JobManager
 from docpipe.config import AppConfig
 
-_ALLOWED_ENGINES = {"fake", "docling", "ppstructure", "paddleocr_vl"}
+_ALLOWED_ENGINES = {"fake", "docling", "ppstructure", "paddleocr_vl", "glm_ocr"}
 _ALLOWED_OUTPUTS = {"json", "md", "html", "pdf-flow", "pdf-searchable", "pdf-positional", "docx"}
 
 
@@ -40,7 +40,10 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         )
 
     def authorize(api_key: str | None) -> None:
-        if cfg.api.api_key and not hmac.compare_digest(api_key or "", cfg.api.api_key):
+        if cfg.api.require_api_key and (
+            not cfg.api.api_key
+            or not hmac.compare_digest(api_key or "", cfg.api.api_key)
+        ):
             raise HTTPException(status_code=401, detail="Неверный API-ключ")
 
     def parse_options(raw: str | None) -> dict:
@@ -106,7 +109,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         opts = parse_options(options)
         name = validate_upload(file)
         engine = str(opts.get("engine", cfg.api.default_engine))
-        if engine not in {"fake", "docling", "ppstructure", "paddleocr_vl"}:
+        if engine not in _ALLOWED_ENGINES:
             raise HTTPException(status_code=400, detail=f"Неизвестный engine: {engine}")
         outputs = opts.get("outputs", ["md", "html", "json"])
         if not isinstance(outputs, list) or not all(isinstance(x, str) for x in outputs):
@@ -213,7 +216,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             if page_count > cfg.api.sync_max_pages:
                 raise HTTPException(status_code=413, detail="Документ превышает лимит синхронного API")
             engine = str(opts.get("engine", cfg.api.default_engine))
-            if engine not in {"fake", "docling", "ppstructure", "paddleocr_vl"}:
+            if engine not in _ALLOWED_ENGINES:
                 raise HTTPException(status_code=400, detail=f"Неизвестный engine: {engine}")
             outputs = opts.get("outputs", ["md", "html", "json"])
             job = manager.submit(path, engine, outputs)

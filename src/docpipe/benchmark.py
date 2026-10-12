@@ -41,7 +41,7 @@ def discover_pairs(root: Path) -> list[dict[str, Any]]:
     if not root.is_dir():
         raise ValueError(f"Dataset directory does not exist: {root}")
     cases = []
-    for folder in sorted(root.rglob("*")):
+    for folder in [root, *sorted(root.rglob("*"))]:
         if not folder.is_dir():
             continue
         files = sorted(p for p in folder.iterdir() if p.is_file()

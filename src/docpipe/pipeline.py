@@ -54,17 +54,31 @@ def parse(path: str | Path, config: AppConfig | None = None, engine: str="doclin
                                 max(0,int(b.bbox.y0*sy)-config.figures.padding_px),
                                 min(raster.image.width,int(b.bbox.x1*sx)+config.figures.padding_px),
                                 min(raster.image.height,int(b.bbox.y1*sy)+config.figures.padding_px)))
-                    figure_boxes=filter_boxes(merge_boxes(figure_boxes,config.figures.merge_iou),raster.image.size,config.figures,len(blocks))
+                    # GLM's detected illustration regions must each retain their
+                    # own asset; merging/filtering destroys that correspondence.
+                    if eng.name != "glm_ocr":
+                        figure_boxes=filter_boxes(merge_boxes(figure_boxes,config.figures.merge_iou),raster.image.size,config.figures,len(blocks))
                     # Маска является отдельной стадией и используется как вход для
                     # последующего OCR-шага адаптера в реальных движках.
                     masked_image = mask_figures(raster.image, figure_boxes)
                     _ = masked_image
-                    if out_dir and figure_boxes:
+                    if out_dir and any(b.type.value == "figure" for b in blocks):
                         saved=crop_and_save(raster.image,figure_boxes,out_dir/"images",i+1)
                         figure_blocks=[b for b in blocks if b.type.value=="figure"]
-                        for b,(pb,path) in zip(figure_blocks,saved):
-                            rel=str(Path("images")/path.name).replace("\\","/")
-                            data=b.figure.model_copy(update={"file":rel,"width_px":pb.x1-pb.x0,"height_px":pb.y1-pb.y0}) if b.figure else None
+                        for b in figure_blocks:
+                            # Match by geometry, never by list position after
+                            # filtering or merging detector boxes.
+                            bx0,by0,bx1,by1=b.bbox.x0*sx,b.bbox.y0*sy,b.bbox.x1*sx,b.bbox.y1*sy
+                            candidates=[(max(0,min(bx1,pb.x1)-max(bx0,pb.x0))*max(0,min(by1,pb.y1)-max(by0,pb.y0)),pb,path) for pb,path in saved]
+                            overlap,pb,path=max(candidates,key=lambda item:item[0],default=(0,None,None))
+                            if overlap <= 0:
+                                # Keep detected figures even when heuristic filters
+                                # excluded their regions; do not leave broken paths.
+                                original=PixelBox(max(0,int(bx0)),max(0,int(by0)),min(raster.image.width,int(bx1)),min(raster.image.height,int(by1)))
+                                _,path=crop_and_save(raster.image,[original],out_dir/"images"/b.id,i+1)[0]
+                                pb=original
+                            rel=str(path.relative_to(out_dir)).replace("\\","/")
+                            data=b.figure.model_copy(update={"file":rel,"format":"jpg","width_px":pb.x1-pb.x0,"height_px":pb.y1-pb.y0}) if b.figure else None
                             if data: blocks[blocks.index(b)]=b.model_copy(update={"figure":data,"text":None})
                     # Paddle explicitly returns parsing_res_list in reading
                     # order. Docling iterate_items traversal regressed on the

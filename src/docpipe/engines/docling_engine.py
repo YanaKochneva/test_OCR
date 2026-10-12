@@ -43,6 +43,9 @@ class DoclingEngine(LayoutOcrEngine):
         self._converter = None
         self._model_info: list[dict[str, Any]] = []
         self._loaded = False
+        self._refinement_reader = None
+        self._cyrillic_reader = None
+        self._latin_reader = None
 
     def load(self) -> None:
         try:
@@ -239,11 +242,124 @@ class DoclingEngine(LayoutOcrEngine):
                             and 0 <= cell_box.y0 <= cell_box.y1 <= page_meta.height_pt):
                         raw_lines.append((cell.text, cell_box, float(cell.confidence)))
             blocks = recover_unassigned_lines(blocks, raw_lines, page_meta.height_pt)
+            if os.getenv("DOCPIPE_OCR_LINE_REFINEMENT", "1") == "1":
+                from docpipe.stages.text_refinement import refine_text_blocks
+                blocks = refine_text_blocks(blocks, self._projected_lines(image,page_meta),page_meta.height_pt)
+                blocks = self._refine_table_cells(blocks,image,page_meta)
 
             return [
                 block.model_copy(update={"order": index})
                 for index, block in enumerate(blocks)
             ]
+
+    def _projected_lines(self, image, meta):
+        """Recognize horizontal ink bands missed by full-page detection."""
+        from rapidocr import RapidOCR
+        from rapidocr.utils.typings import OCRVersion, ModelType, LangRec
+        if self._refinement_reader is None:
+            self._refinement_reader = RapidOCR(params={
+                "Det.ocr_version":OCRVersion.PPOCRV5, "Det.model_type":ModelType.MOBILE,
+                "Cls.ocr_version":OCRVersion.PPOCRV4, "Cls.model_type":ModelType.MOBILE,
+                "Rec.ocr_version":OCRVersion.PPOCRV5, "Rec.model_type":ModelType.MOBILE,
+                "Rec.lang_type":LangRec(self.languages[0]), "Global.text_score":.75,
+            })
+        import numpy as np
+        dark=np.asarray(image.convert("L"))<170
+        active=dark.sum(axis=1)>max(12,image.width*.008)
+        indices=np.flatnonzero(active)
+        bands=[]
+        for y in indices:
+            if bands and y-bands[-1][1]<=3:bands[-1][1]=int(y)
+            else:bands.append([int(y),int(y)])
+        output=[]
+        for top,last in bands:
+            bottom=last+1
+            if bottom-top<8 or bottom-top>max(80,image.height*.04):continue
+            pixels=dark[top:bottom]
+            # Exclude horizontal rules rather than transcribing table borders.
+            if (pixels.sum(axis=1)>image.width*.6).any():continue
+            columns=np.flatnonzero(pixels.sum(axis=0)>=2)
+            if len(columns)<10:continue
+            left,right=int(columns[0]),int(columns[-1])+1
+            crop=image.crop((max(0,left-6),max(0,top-6),min(image.width,right+6),min(image.height,bottom+6)))
+            result=self._refinement_reader(crop,use_det=False,use_cls=False)
+            if not result.txts:continue
+            text=result.txts[0].strip();score=float(result.scores[0])
+            from docpipe.stages.word_refinement import refine_mixed_words
+            def word_reader(word_image,**kwargs):
+                primary=self._refinement_reader(word_image,**kwargs)
+                if primary.txts and float(primary.scores[0])>=.95:return primary
+                if self._latin_reader is None:
+                    self._latin_reader=RapidOCR(params={
+                        "Rec.ocr_version":OCRVersion.PPOCRV5,"Rec.model_type":ModelType.MOBILE,
+                        "Rec.lang_type":LangRec.LATIN,"Global.text_score":.75})
+                alternative=self._latin_reader(word_image,**kwargs)
+                return alternative if alternative.txts and (not primary.txts or alternative.scores[0]>primary.scores[0]) else primary
+            text=refine_mixed_words(crop,text,word_reader)
+            if '\\' in text:
+                from docpipe.stages.path_recognition import recognize_path_components
+                path_result=recognize_path_components(crop,self._refinement_reader)
+                if path_result is not None:
+                    candidate,candidate_score=path_result
+                    from rapidfuzz.distance import Levenshtein
+                    if Levenshtein.normalized_similarity(text.casefold(),candidate.casefold())>=.7:
+                        text,score=candidate,candidate_score
+            if '\\' in text and any('А'<=c<='я' for c in text):
+                if self._cyrillic_reader is None:
+                    self._cyrillic_reader=RapidOCR(params={
+                        "Rec.ocr_version":OCRVersion.PPOCRV5,
+                        "Rec.model_type":ModelType.MOBILE,
+                        "Rec.lang_type":LangRec.CYRILLIC,
+                        "Global.text_score":.75,
+                    })
+                alternative=self._cyrillic_reader(crop,use_det=False,use_cls=False)
+                if alternative.txts and float(alternative.scores[0])>=.85:
+                    from docpipe.stages.mixed_scripts import choose_path_candidate
+                    selected=choose_path_candidate(text,alternative.txts[0].strip())
+                    if selected!=text:
+                        text=selected;score=float(alternative.scores[0])
+            if score<.85 or not text:continue
+            box=BBox(x0=left*meta.width_pt/image.width,x1=right*meta.width_pt/image.width,
+                     y0=top*meta.height_pt/image.height,y1=bottom*meta.height_pt/image.height)
+            output.append((text,box,score))
+        return output
+
+    def _refine_table_cells(self, blocks, image, meta):
+        """Read inside each cell so neighboring columns cannot contaminate text."""
+        from rapidfuzz.distance import Levenshtein
+        result=[]
+        sx,sy=image.width/meta.width_pt,image.height/meta.height_pt
+        for block in blocks:
+            if block.table is None:
+                result.append(block);continue
+            cells=[]
+            for cell in block.table.cells:
+                box=cell.bbox
+                if box.x1-box.x0<15 or box.y1-box.y0<5:
+                    cells.append(cell);continue
+                left,top=max(0,int(box.x0*sx)+2),max(0,int(box.y0*sy)+2)
+                right,bottom=min(image.width,int(box.x1*sx)-2),min(image.height,int(box.y1*sy)-2)
+                if right<=left or bottom<=top:
+                    cells.append(cell);continue
+                crop=image.crop((left,top,right,bottom))
+                local=PageMeta(meta.index,(right-left)/sx,(bottom-top)/sy,0,meta.dpi)
+                lines=self._projected_lines(crop,local)
+                candidate=' '.join(t for t,b,s in lines)
+                normal=lambda text:' '.join(text.casefold().split())
+                similarity=Levenshtein.normalized_similarity(normal(cell.text),normal(candidate))
+                if candidate and (not cell.text.strip() or (similarity>=.8 and len(candidate)>=len(cell.text)*.9)):
+                    cell=cell.model_copy(update={'text':candidate})
+                elif candidate and cell.text.strip():
+                    import re
+                    old_word=cell.text.split()[0];new_word=candidate.split()[0]
+                    mixed=bool(re.search('[А-Яа-яЁё]',old_word) and re.search('[A-Za-z]',old_word))
+                    if mixed and re.fullmatch('[A-Za-z]{4,}',new_word) and abs(len(new_word)-len(old_word))<=2:
+                        # Keep the rest of a cell when full-cell reconciliation
+                        # rejects a candidate; this word was reread from pixels.
+                        cell=cell.model_copy(update={'text':new_word+cell.text[len(old_word):]})
+                cells.append(cell)
+            result.append(block.model_copy(update={'table':block.table.model_copy(update={'cells':cells})}))
+        return result
 
     @staticmethod
     def _bbox_from_provenance(
@@ -399,8 +515,6 @@ class DoclingEngine(LayoutOcrEngine):
                     # Retain actual text even when cell geometry is absent.
                     # Empty grid placeholders still have nothing to preserve.
                     if cell_bbox is None:
-                        if not cell_text.strip():
-                            continue
                         from types import SimpleNamespace
                         rows = max(1, int(getattr(table_data, "num_rows", 1)))
                         cols = max(1, int(getattr(table_data, "num_cols", 1)))

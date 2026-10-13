@@ -3,6 +3,12 @@ from docpipe.engines.fake_engine import FakeEngine
 
 
 def create_engine(name: str, **kwargs) -> LayoutOcrEngine:
+    if name == "docling_glm":
+        from docpipe.engines.docling_engine import DoclingEngine
+        engine = DoclingEngine(kwargs.get('mode', 'native'))
+        engine.glm_review = True
+        engine.name = 'docling_glm'
+        return engine
     if name == "glm_ocr":
         from docpipe.engines.glm_ocr_engine import GlmOcrEngine
         return GlmOcrEngine()

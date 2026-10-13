@@ -1,52 +1,40 @@
-# docpipe
+# DocPipe
 
-Production-oriented конвейер «скан → документ с картинками на своих местах».
+Постраничное распознавание PDF и изображений с восстановлением текста, таблиц и рисунков.
+Основной маршрут: Docling + PP-OCRv5 через RapidOCR.
 
-## Статус
+## Локальный запуск на этом компьютере
 
-Реализованы OCR-конвейер, API заданий и веб-интерфейс. Production API и CLI по умолчанию используют Docling; fake-движок остаётся только для явно настроенных тестов и разработки. Готовность к промышленной эксплуатации ограничена незавершённым тестированием контейнера, безопасности и нагрузок.
+```powershell
+Set-Location 'C:\Users\andre\Desktop\test_OCR'
+$env:PYTHONPATH = "$PWD\src"
+& 'D:\AI\venvs\test_OCR\Scripts\python.exe' -m uvicorn docpipe.api.app:app --host 127.0.0.1 --port 8000
+```
 
-### Сделано в Фазе 0
+Откройте `http://localhost:8000/`. В обычном локальном режиме ключ не требуется.
+Настройки могут переопределяться переменными окружения и YAML.
 
-- Pydantic v2 IR с детерминированной JSON-сериализацией.
-- JSON Schema в `docs/ir.schema.json`.
-- Конфигурация через `pydantic-settings` и YAML.
-- Иерархия ошибок.
-- Базовый `doctor`.
-- Проверка лицензий установленного окружения.
-- Зафиксированные версии в `constraints.txt`.
-- Архитектурные решения в `docs/DECISIONS.md`.
+## Установка в новое окружение
 
-## Установка
-
-```bash
+```powershell
 python -m venv .venv
-# Windows: .venv\\Scripts\\activate
-# Linux/macOS: source .venv/bin/activate
-python -m pip install -c constraints.txt -e '.[docling]'
+.\.venv\Scripts\python.exe -m pip install -c constraints.txt -e '.[docling]'
 ```
 
-Для CPU-only потокового PDF можно использовать `pip install -e .` и extra `pdf` для WeasyPrint. OCR extras: `docpipe[docling]`, `docpipe[paddle]`.
+OCR требует заранее загруженных моделей. Перенос исходного кода без зависимостей
+и моделей не обеспечивает автономную работу.
 
-## Команды
+## Документация
 
-```bash
-python -m docpipe.cli doctor
-python scripts/generate_ir_schema.py
-python scripts/check_licenses.py
-python -m pytest -q
-```
+- [Объяснение и обоснование компонентов](docs/PROJECT_STRUCTURE_RU.md).
+- [Интерфейс](docs/USER_INTERFACE.md).
+- [Последние подтверждённые метрики](docs/QUALITY_BASELINE_RU.md).
+- [Текущая схема](docs/ocr-architecture-best-styled.drawio).
+- [Ограничения готовности](docs/PRODUCTION_READINESS.md).
+- [Оценка качества на новых документах](docs/BENCHMARK.md).
+- [Журнал очистки](docs/cleanup-20261013.json).
 
-## Допущения
-
-- GPU: опционален, определяется автоматически на следующих фазах.
-- Целевая latency: не объявляется до baseline.
-- Языки: русский и английский.
-- Основной вывод: потоковый.
-- Позиционный рендерер по умолчанию выключен.
-- Обработка выполняется offline; загрузка моделей — отдельный подготовительный шаг.
-- Численные quality thresholds заказчик задаёт после baseline, они не подгоняются под результат.
-
-## Важное ограничение текущей фазы
-
-Веб-интерфейс запускается по адресу `http://localhost:8000/` вместе с API. Инструкция: `docs/USER_INTERFACE.md`. Для распознавания локально установите extra `docpipe[docling]`; Docker-образ устанавливает Docling и заранее загружает его модели.
+Вход: PDF, PNG, JPG/JPEG, TIFF, BMP, WebP. DOCX используется как эталон оценки.
+Результаты создаются в `data/jobs/` или выбранной пользователем папке.
+Тестовые наборы, временные файлы и старые выходные документы удалены по запросу.
+Оценщик CER/WER сохранён как функция приложения.

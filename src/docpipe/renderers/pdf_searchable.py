@@ -24,6 +24,15 @@ def _make_overlay(document: Document, page_index: int, width: float, height: flo
     font = _font_name()
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=(width, height))
+    rotation = document.pages[page_index].rotation % 360
+    transforms = {
+        90: (0, 1, -1, 0, width, 0),
+        180: (-1, 0, 0, -1, width, height),
+        270: (0, -1, 1, 0, 0, height),
+    }
+    if rotation in transforms:
+        c.transform(*transforms[rotation])
+    visible_height = document.pages[page_index].height_pt
     c.setFont(font, 8)
     text_mode = 3  # PDF text rendering mode: invisible.
     for block in sorted(document.pages[page_index].blocks, key=lambda item: item.order):
@@ -44,7 +53,7 @@ def _make_overlay(document: Document, page_index: int, width: float, height: flo
                 if len(lines) * size <= available_height or size <= .5:
                     break
                 size = max(.5, size * .85)
-            text = c.beginText(box.x0, height - box.y0 - size)
+            text = c.beginText(box.x0, visible_height - box.y0 - size)
             text.setFont(font, size)
             text.setLeading(size)
             text.setTextRenderMode(text_mode)
@@ -75,7 +84,11 @@ def render(document: Document, source_pdf: Path, out: Path) -> Path:
             x0, y0, x1, y1 = map(float, box)
             width, height = x1 - x0, y1 - y0
             overlay_bytes = _make_overlay(document, index, width, height)
+            # Overlay coordinates were explicitly mapped to raw page space.
+            # Avoid applying the page rotation a second time during placement.
+            page.obj.Rotate = 0
             with pikepdf.Pdf.open(BytesIO(overlay_bytes)) as overlay:
                 page.add_overlay(overlay.pages[0], pikepdf.Rectangle(x0, y0, x1, y1))
+            page.obj.Rotate = document.pages[index].rotation % 360
         pdf.save(str(out))
     return out

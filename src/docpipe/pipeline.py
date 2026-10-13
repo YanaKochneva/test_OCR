@@ -17,7 +17,6 @@ from docpipe.render.raster import rasterize_page
 from docpipe.stages.order import assign_order
 from docpipe.stages.postprocess import postprocess
 from docpipe.stages.figures import PixelBox, crop_and_save, filter_boxes, merge_boxes
-from docpipe.stages.masking import mask_figures
 from docpipe.stages.captions import attach_captions
 
 
@@ -39,8 +38,11 @@ def parse(path: str | Path, config: AppConfig | None = None, engine: str="doclin
             page=doc[i]
             try:
                 raster=rasterize_page(page, config.default_dpi)
-                meta=PageMeta(i,raster.width_pt,raster.height_pt,raster.rotation,raster.dpi)
                 try:
+                    prepare_raster = getattr(eng, 'prepare_raster', None)
+                    if prepare_raster is not None:
+                        raster = prepare_raster(raster)
+                    meta=PageMeta(i,raster.width_pt,raster.height_pt,raster.rotation,raster.dpi)
                     blocks=eng.analyze_page(raster.image,meta)
                     # Figure-блоки приходят из адаптера в координатах страницы.
                     # Здесь они единственный раз переводятся в пиксели для вырезки.
@@ -58,10 +60,6 @@ def parse(path: str | Path, config: AppConfig | None = None, engine: str="doclin
                     # own asset; merging/filtering destroys that correspondence.
                     if eng.name != "glm_ocr":
                         figure_boxes=filter_boxes(merge_boxes(figure_boxes,config.figures.merge_iou),raster.image.size,config.figures,len(blocks))
-                    # Маска является отдельной стадией и используется как вход для
-                    # последующего OCR-шага адаптера в реальных движках.
-                    masked_image = mask_figures(raster.image, figure_boxes)
-                    _ = masked_image
                     if out_dir and any(b.type.value == "figure" for b in blocks):
                         saved=crop_and_save(raster.image,figure_boxes,out_dir/"images",i+1)
                         figure_blocks=[b for b in blocks if b.type.value=="figure"]
@@ -87,7 +85,7 @@ def parse(path: str | Path, config: AppConfig | None = None, engine: str="doclin
                         blocks=assign_order(blocks,raster.width_pt)
                     blocks=attach_captions(blocks)
                     blocks=postprocess(blocks,config.render.headers_footers)
-                    pages.append(Page(index=i,width_pt=raster.width_pt,height_pt=raster.height_pt,rotation=raster.rotation,raster_dpi=raster.dpi,size_px=raster.image.size,status=PageStatus.OK,text_layer=statuses[i],blocks=blocks))
+                    pages.append(Page(index=i,width_pt=raster.width_pt,height_pt=raster.height_pt,rotation=raster.rotation,raster_dpi=raster.dpi,size_px=raster.image.size,status=PageStatus.OK,text_layer=statuses[i],blocks=blocks,warnings=list(getattr(eng,'warnings',[]))))
                     if progress_callback:
                         progress_callback(i + 1, total_pages)
                 except Exception as exc:
@@ -98,6 +96,8 @@ def parse(path: str | Path, config: AppConfig | None = None, engine: str="doclin
                 page.close()
     finally: doc.close()
     if cleanup: pdf_path.unlink(missing_ok=True)
+    from docpipe.stages.repeated_margins import classify_repeated_margins
+    pages=classify_repeated_margins(pages,config.render.headers_footers)
     elapsed=time.perf_counter()-started
     return Document(source=SourceInfo(file=str(source),sha256=_sha256(source),type=SourceType.PDF if source.suffix.lower()=='.pdf' else SourceType.IMAGE),engine=eng.info(),pages=pages,timings={"parse_total":elapsed})
 

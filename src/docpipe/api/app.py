@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from docpipe.api.jobs import JobManager
 from docpipe.config import AppConfig
 
-_ALLOWED_ENGINES = {"fake", "docling", "ppstructure", "paddleocr_vl", "glm_ocr"}
+_ALLOWED_ENGINES = {"fake", "docling", "docling_glm", "ppstructure", "paddleocr_vl", "glm_ocr"}
 _ALLOWED_OUTPUTS = {"json", "md", "html", "pdf-flow", "pdf-searchable", "pdf-positional", "docx"}
 
 

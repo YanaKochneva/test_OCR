@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from statistics import median
 
 from docpipe.ir import Block, BBox
@@ -45,17 +45,28 @@ def build_table_layout(block: Block) -> TableLayout:
 
     placements: list[CellPlacement] = []
     occupied: set[tuple[int, int]] = set()
+    owners: dict[tuple[int, int], int] = {}
     for cell in sorted(source_cells, key=lambda item: (item.row, item.col)):
         row, col = cell.row, cell.col
         rowspan = min(cell.rowspan, rows - row)
         colspan = min(cell.colspan, cols - col)
-        if rowspan <= 0 or colspan <= 0 or (row, col) in occupied:
+        if rowspan <= 0 or colspan <= 0:
+            continue
+        if (row,col) in occupied:
+            # OCR can emit a merged placeholder and a separate populated cell
+            # for the same grid position. Never discard that populated payload.
+            owner=owners[(row,col)]
+            previous=placements[owner]
+            text=cell.text.strip()
+            if text and text not in previous.text.splitlines():
+                placements[owner]=replace(previous,text='\n'.join(t for t in (previous.text,text) if t))
             continue
         placement = CellPlacement(row, col, rowspan, colspan, cell.text)
         placements.append(placement)
         for covered_row in range(row, row + rowspan):
             for covered_col in range(col, col + colspan):
                 occupied.add((covered_row, covered_col))
+                owners[(covered_row,covered_col)]=len(placements)-1
 
     # An engine can report table text without usable cell coordinates. Keep the
     # text visible inside a real one-cell table rather than dropping it.

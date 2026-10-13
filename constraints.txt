@@ -10,7 +10,6 @@ reportlab==4.4.9
 img2pdf==0.6.3
 Pillow==12.3.0
 numpy==2.3.5
-pytest==9.0.2
 rapidfuzz==3.14.3
 weasyprint==68.0
 ruff==0.14.2

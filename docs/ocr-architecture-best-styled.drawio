@@ -1,0 +1,149 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/27.0.9 Chrome/134.0.6998.205 Electron/35.4.0 Safari/537.36" version="27.0.9">
+  <diagram id="best-ocr" name="Проверенная архитектура OCR">
+    <mxGraphModel dx="3169" dy="1869" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1780" pageHeight="3368" math="0" shadow="0" background="#F3F6FB">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;Архитектура обработки документа&lt;br&gt;&lt;font&gt;Docling + PP-OCRv5&lt;/font&gt;&lt;/div&gt;" style="text;html=1;align=center;fontFamily=Arial;fontSize=30;fontColor=#17304E;" parent="1" vertex="1">
+          <mxGeometry x="80" y="35" width="1620" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="step0" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;b&gt;01  Загрузка и проверка файла&lt;/b&gt;&lt;br&gt;Проверяем наличие файла, размер и допустимое число страниц.&lt;hr&gt;&lt;font&gt;&lt;b&gt;Инструменты:&lt;/b&gt; Python · pathlib&amp;nbsp;&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#eaf4ff;strokeColor=#2866a6;strokeWidth=1.5;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="70" y="180" width="740" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="step1" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;b&gt;02  Нормализация в PDF&lt;/b&gt;&lt;br&gt;PDF оставляем как есть. Изображения и многостраничный TIFF&lt;br&gt;приводим к PDF без дополнительного JPEG-сжатия.&lt;hr&gt;&lt;font&gt;&lt;b&gt;Инструменты:&lt;/b&gt; Pillow 12.3.0 · img2pdf 0.6.3&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#eaf4ff;strokeColor=#2866a6;strokeWidth=1.5;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="70" y="414" width="740" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="edge1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;endArrow=block;strokeColor=#7186A3;strokeWidth=2;" parent="1" source="step0" target="step1" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="step2" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;b&gt;03  Анализ и подготовка страниц&lt;/b&gt;&lt;br&gt;Проверяем текстовый слой; создаём изображение каждой страницы&lt;br&gt;для распознавания и сохраняем её исходные размеры.&lt;hr&gt;&lt;font&gt;&lt;b&gt;Инструменты:&lt;/b&gt; pypdfium2 5.13.0 · растеризация 300 DPI&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#eaf4ff;strokeColor=#2866a6;strokeWidth=1.5;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="70" y="648" width="740" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="edge2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;endArrow=block;strokeColor=#7186A3;strokeWidth=2;" parent="1" source="step1" target="step2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="step3" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;b&gt;04  Определение структуры страницы&lt;/b&gt;&lt;br&gt;Выделяем текст, заголовки, таблицы и рисунки.&lt;br&gt;Получаем координаты объектов и структуру таблиц.&lt;hr&gt;&lt;font&gt;&lt;b&gt;Инструменты:&lt;/b&gt; Docling · модель layout · TableFormer&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#eaf4ff;strokeColor=#2866a6;strokeWidth=1.5;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="70" y="882" width="740" height="264" as="geometry" />
+        </mxCell>
+        <mxCell id="edge3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;endArrow=block;strokeColor=#7186A3;strokeWidth=2;" parent="1" source="step2" target="step3" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="step4" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;b&gt;05  Распознавание символов&lt;/b&gt;&lt;br&gt;Находим строки и читаем кириллицу. Для смешанных слов&lt;br&gt;и сомнительных коротких значений используем дополнительные проходы.&lt;hr&gt;&lt;font&gt;&lt;b&gt;Инструменты:&lt;/b&gt; RapidOCR · ONNX Runtime (CPU) · PP-OCRv5 mobile&lt;br&gt;Основной: Cyrillic; дополнительные: Latin / ESLAV&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#eaf4ff;strokeColor=#2866a6;strokeWidth=1.5;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="70" y="1190" width="740" height="291" as="geometry" />
+        </mxCell>
+        <mxCell id="edge4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;endArrow=block;strokeColor=#7186A3;strokeWidth=2;" parent="1" source="step3" target="step4" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="step5" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;b&gt;06  Повторное чтение сложных областей&lt;/b&gt;&lt;br&gt;Повторно читаем сомнительные строки и пропущенные фрагменты;&lt;br&gt;сопоставляем варианты, защищаем уже распознанные значения.&lt;hr&gt;&lt;font&gt;&lt;b&gt;Инструменты:&lt;/b&gt; Pillow · NumPy · повторные проходы RapidOCR · RapidFuzz&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#e8f6f2;strokeColor=#247f6a;strokeWidth=1.5;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="70" y="1525" width="740" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="edge5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;endArrow=block;strokeColor=#7186A3;strokeWidth=2;" parent="1" source="step4" target="step5" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="step6" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;b&gt;07  Восстановление таблиц&lt;/b&gt;&lt;br&gt;Уточняем границы ячеек, повторно читаем их содержимое.&lt;br&gt;Сохраняем строки, столбцы, объединения и существующие числа.&lt;hr&gt;&lt;font&gt;&lt;b&gt;Инструменты:&lt;/b&gt; TableFormer · OpenCV · адаптивная сетка · OCR ячеек&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#e8f6f2;strokeColor=#247f6a;strokeWidth=1.5;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="70" y="1779" width="740" height="237" as="geometry" />
+        </mxCell>
+        <mxCell id="edge6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;endArrow=block;strokeColor=#7186A3;strokeWidth=2;" parent="1" source="step5" target="step6" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="step7" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;b&gt;08  Сохранение изображений&lt;/b&gt;&lt;br&gt;Вырезаем найденные рисунки и связываем их с блоками&lt;br&gt;по координатам; сохраняем подписи и положение на странице.&lt;hr&gt;&lt;font&gt;&lt;b&gt;Инструменты:&lt;/b&gt; Pillow · геометрическое сопоставление · файлы изображений&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#e8f6f2;strokeColor=#247f6a;strokeWidth=1.5;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="70" y="2060" width="740" height="205" as="geometry" />
+        </mxCell>
+        <mxCell id="edge7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;endArrow=block;strokeColor=#7186A3;strokeWidth=2;" parent="1" source="step6" target="step7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="step8" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;b&gt;09  Сборка структуры документа&lt;/b&gt;&lt;br&gt;Устанавливаем порядок чтения и классифицируем повторяющиеся&lt;br&gt;колонтитулы. Храним текст, таблицы, рисунки и координаты в общей модели.&lt;hr&gt;&lt;font&gt;&lt;b&gt;Инструменты:&lt;/b&gt; XY-cut · repeated_margins · Pydantic / промежуточная модель IR&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#e8f6f2;strokeColor=#247f6a;strokeWidth=1.5;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="70" y="2309" width="740" height="232" as="geometry" />
+        </mxCell>
+        <mxCell id="edge8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;endArrow=block;strokeColor=#7186A3;strokeWidth=2;" parent="1" source="step7" target="step8" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="step9" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;b&gt;10  Восстановление и экспорт&lt;/b&gt;&lt;br&gt;Собираем редактируемые блоки и таблицы; вставляем изображения.&lt;br&gt;Рассчитываем размещение текста в пределах исходных областей.&lt;hr&gt;&lt;font&gt;&lt;b&gt;Инструменты:&lt;/b&gt; DOCX: python-docx / OpenXML · HTML: CSS / base64&lt;br&gt;Дополнительные выходы: Markdown и PDF&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#e8f6f2;strokeColor=#247f6a;strokeWidth=1.5;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="70" y="2585" width="740" height="345" as="geometry" />
+        </mxCell>
+        <mxCell id="edge9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;endArrow=block;strokeColor=#7186A3;strokeWidth=2;" parent="1" source="step8" target="step9" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="step10" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;b&gt;11  Проверка результата&lt;/b&gt;&lt;br&gt;Проверяем структуру и содержимое результата, таблицы и рисунки.&lt;br&gt;При наличии эталона отдельно измеряем CER, WER и полноту текста.&lt;hr&gt;&lt;font&gt;&lt;b&gt;Инструменты:&lt;/b&gt; DocPipe verify · benchmark · RapidFuzz&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#e8f6f2;strokeColor=#247f6a;strokeWidth=1.5;shadow=0;" parent="1" vertex="1">
+          <mxGeometry x="70" y="2974" width="740" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="edge10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;endArrow=block;strokeColor=#7186A3;strokeWidth=2;" parent="1" source="step9" target="step10" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note" value="Контрольный замер: документы 3 и 4 — средний CER 5,80%. Цель - 3%." style="text;html=1;align=center;fontFamily=Arial;fontSize=19;fontColor=#526581;" parent="1" vertex="1">
+          <mxGeometry x="70" y="3218" width="1640" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="NVQlfBuTDGPwQJVBnFEp-3" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;font&gt;&lt;b&gt;Pillow 12.3.0&amp;nbsp;&lt;/b&gt;- открывает файлы и извлекает отдельные страницы&lt;/font&gt;&lt;div&gt;&lt;font&gt;&lt;span&gt;&lt;b&gt;img2pdf 0.6.3&amp;nbsp;&lt;/b&gt;- собирает файл в pdf&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#ffffff;strokeColor=#cfdae7;strokeWidth=1.5;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="890" y="414" width="820" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="NVQlfBuTDGPwQJVBnFEp-5" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;font&gt;&lt;span&gt;&lt;font&gt;&lt;b&gt;pathlib &lt;/b&gt;&lt;/font&gt;&lt;span&gt;(в составе&amp;nbsp;&lt;/span&gt;&lt;/span&gt;&lt;span&gt;Python&amp;nbsp;&lt;/span&gt;&lt;span&gt;&lt;span&gt;3.13.16) -&amp;nbsp; р&lt;/span&gt;&lt;/span&gt;&lt;span&gt;аботает с путями, проверяет&lt;br&gt;наличие и размер файлов.&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#ffffff;strokeColor=#cfdae7;strokeWidth=1.5;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="890" y="180" width="820" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="NVQlfBuTDGPwQJVBnFEp-6" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;font&gt;&lt;font&gt;&lt;span&gt;&lt;font&gt;&lt;b&gt;pypdfium2&lt;/b&gt;&lt;/font&gt;&lt;/span&gt;&lt;span&gt;- о&lt;/span&gt;&lt;/font&gt;&lt;span&gt;ткрывает PDF, анализирует&lt;br&gt;текстовый слой и создаёт изображения страниц для OCR.&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#ffffff;strokeColor=#cfdae7;strokeWidth=1.5;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="890" y="648" width="820" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="NVQlfBuTDGPwQJVBnFEp-8" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;font&gt;&lt;b&gt;&lt;span&gt;RapidOCR&lt;/span&gt;&amp;nbsp;&lt;/b&gt;&lt;span&gt;&lt;b&gt;3.9.2&lt;/b&gt; - Запускает обнаружение текста и распознавание строк; возвращает координаты и уверенность.&lt;br&gt;&lt;b&gt;ONNX Runtime&lt;/b&gt;&lt;/span&gt;&lt;b&gt;&amp;nbsp;&lt;/b&gt;&lt;span&gt;&lt;b&gt;1.30.0&lt;/b&gt; -&lt;/span&gt;&lt;span&gt; &lt;/span&gt;&lt;span&gt;Выполняет OCR-модели на CPU.&lt;br&gt;&lt;b&gt;PP-OCRv5 mobile detector&lt;/b&gt;&lt;/span&gt;&lt;b&gt;&amp;nbsp;&lt;span&gt;v5, mobile&lt;/span&gt;&lt;/b&gt;&amp;nbsp;-&amp;nbsp;&lt;span&gt;Находит текстовые области.&lt;br&gt;PP-OCRv5 Cyrillic mobile&lt;/span&gt;&amp;nbsp;&lt;span&gt;v5, mobile Основной проход распознавания кириллицы.&lt;br&gt;PP-OCRv5 Latin mobile v5, mobile - Дополнительное чтение латинских и смешанных слов.&lt;br&gt;PP-OCRv5 ESLAV mobile v5, mobile - Дополнительная проверка сомнительных коротких значений.&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#ffffff;strokeColor=#cfdae7;strokeWidth=1.5;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="890" y="1190" width="820" height="291" as="geometry" />
+        </mxCell>
+        <mxCell id="NVQlfBuTDGPwQJVBnFEp-9" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;span&gt;&lt;font&gt;Pillow&#09;12.3.0&#09;Вырезает фрагменты, корректирует контраст и добавляет поля вокруг текста.&lt;br&gt;NumPy&#09;2.3.5&#09;Анализирует пиксели и помогает выделять отдельные строки.&lt;br&gt;RapidOCR&#09;3.9.2&#09;Повторно распознаёт сложные и пропущенные области.&lt;br&gt;RapidFuzz&#09;3.14.3&#09;Сравнивает варианты распознавания для выбора допустимой замены.&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#ffffff;strokeColor=#cfdae7;strokeWidth=1.5;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="890" y="1525" width="820" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="NVQlfBuTDGPwQJVBnFEp-11" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;font&gt;&lt;font&gt;&lt;b&gt;&lt;font&gt;Docling&lt;/font&gt;&lt;span&gt;&amp;nbsp;&lt;/span&gt;&lt;span&gt;&lt;span&gt;2.134.0&lt;/span&gt;&lt;/span&gt;&lt;/b&gt;&lt;b&gt;&amp;nbsp;&lt;/b&gt;&lt;span&gt;-&amp;nbsp;&lt;/span&gt;&lt;/font&gt;&lt;span&gt;Организует анализ страницы, выделяет структурные элементы и&amp;nbsp;связывает их с текстом:&lt;/span&gt;&lt;br&gt;&lt;/font&gt;&lt;div&gt;&lt;font&gt;&lt;font&gt;&lt;b&gt;&lt;span&gt;&lt;font&gt;docling-core&lt;/font&gt;&lt;/span&gt;&lt;span&gt;&amp;nbsp;&lt;/span&gt;&lt;/b&gt;&lt;strong&gt;&lt;span&gt;2.100.0&lt;/span&gt;&lt;/strong&gt;&lt;span&gt;&lt;b&gt;&amp;nbsp;&lt;/b&gt;-&amp;nbsp;&lt;/span&gt;&lt;/font&gt;&lt;span&gt;Предоставляет модели данных и представление структуры документа&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font&gt;&lt;b&gt;docling-ibm-models&lt;/b&gt;&lt;/font&gt;&lt;font&gt;&lt;b&gt;&amp;nbsp;&lt;span&gt;&lt;/span&gt;&lt;/b&gt;&lt;strong&gt;&lt;span&gt;4.0.3 -&amp;nbsp;&lt;/span&gt;&lt;/strong&gt;&lt;span&gt;Содержит реализацию моделей анализа расположения объектов и&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;font&gt;структуры таблиц, включая TableFormer.&lt;span&gt;&lt;/span&gt;&lt;/font&gt;&lt;div&gt;&lt;font&gt;&lt;font&gt;&lt;b&gt;docling-parse&amp;nbsp;&lt;/b&gt;&lt;/font&gt;&lt;strong&gt;&lt;span&gt;7.22.2 -&amp;nbsp;&lt;/span&gt;&lt;/strong&gt;&lt;span&gt;Обеспечивает разбор PDF внутри Docling.&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;span&gt;&lt;/span&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#ffffff;strokeColor=#cfdae7;strokeWidth=1.5;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="890" y="882" width="820" height="264" as="geometry" />
+        </mxCell>
+        <mxCell id="NVQlfBuTDGPwQJVBnFEp-14" value="Text" style="text;html=1;align=center;fontFamily=Arial;fontSize=17;fontColor=#526581;" vertex="1" parent="1">
+          <mxGeometry x="820" y="3283" width="140" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="NVQlfBuTDGPwQJVBnFEp-15" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;span&gt;TableFormer через docling-ibm-models&#09;Пакет 4.0.3&#09;Определяет строки, столбцы и объединения ячеек.&lt;br/&gt;OpenCV — пакет opencv-python&#09;5.0.0.93&#09;Находит линии таблицы и уточняет области ячеек.&lt;br/&gt;RapidOCR&#09;3.9.2&#09;Повторно читает содержимое отдельных ячеек.&lt;br/&gt;Модули DocPipe&#09;0.1.0&#09;Восстанавливают пропуски, сопоставляют строки с ячейками и защищают существующие значения.&lt;/span&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#ffffff;strokeColor=#cfdae7;strokeWidth=1.5;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="890" y="1779" width="820" height="237" as="geometry" />
+        </mxCell>
+        <mxCell id="NVQlfBuTDGPwQJVBnFEp-16" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;span&gt;Pillow&#09;12.3.0&#09;Вырезает рисунки из страницы и сохраняет их файлами.&lt;br/&gt;Модули геометрии и подписей DocPipe&#09;0.1.0&#09;Связывают изображения с координатами и подписями.&lt;/span&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#ffffff;strokeColor=#cfdae7;strokeWidth=1.5;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="890" y="2060" width="820" height="205" as="geometry" />
+        </mxCell>
+        <mxCell id="NVQlfBuTDGPwQJVBnFEp-17" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;span&gt;Pydantic&#09;2.13.4&#09;Проверяет структуру промежуточных данных: страниц, блоков, таблиц и изображений.&lt;br/&gt;XY-cut / repeated_margins / IR&#09;В составе DocPipe 0.1.0&#09;Определяют порядок чтения, классифицируют повторяющиеся колонтитулы и формируют общую модель документа.&lt;/span&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#ffffff;strokeColor=#cfdae7;strokeWidth=1.5;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="890" y="2309" width="820" height="232" as="geometry" />
+        </mxCell>
+        <mxCell id="NVQlfBuTDGPwQJVBnFEp-18" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;span&gt;python-docx&#09;1.2.0&#09;Создаёт DOCX с текстом, таблицами и изображениями.&lt;br/&gt;OpenXML&#09;Стандарт формата DOCX&#09;Позволяет задавать размещение и свойства объектов Word.&lt;br/&gt;HTML / CSS&#09;Веб-стандарты&#09;Отображают страницы, текст, таблицы и изображения в браузере.&lt;br/&gt;base64&#09;В составе Python 3.13.16&#09;Встраивает изображения непосредственно в HTML.&lt;br/&gt;ReportLab&#09;4.4.9&#09;Формирует PDF в соответствующих режимах экспорта.&lt;br/&gt;pikepdf&#09;10.16.0&#09;Обеспечивает операции с PDF в предусмотренных проектом сценариях.&lt;br/&gt;Рендереры DocPipe&#09;0.1.0&#09;Рассчитывают размещение и формируют выходные документы, включая Markdown.&lt;/span&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#ffffff;strokeColor=#cfdae7;strokeWidth=1.5;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="890" y="2585" width="820" height="345" as="geometry" />
+        </mxCell>
+        <mxCell id="NVQlfBuTDGPwQJVBnFEp-19" value="&lt;div style=&quot;font-family:Arial;line-height:1.35;white-space:normal&quot;&gt;&lt;span&gt;DocPipe verify / benchmark&#09;0.1.0&#09;Проверяют результат и сравнивают распознавание с эталоном.&lt;br/&gt;RapidFuzz&#09;3.14.3&#09;Вычисляет различия текстов для CER и WER.&lt;/span&gt;&lt;/div&gt;" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=24;fontFamily=Arial;fontSize=19;fontColor=#17304E;fillColor=#ffffff;strokeColor=#cfdae7;strokeWidth=1.5;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="890" y="2974" width="820" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="explain-0" parent="1" edge="1" source="step0" target="NVQlfBuTDGPwQJVBnFEp-5" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=none;dashed=1;strokeColor=#C1CDDD;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="explain-1" parent="1" edge="1" source="step1" target="NVQlfBuTDGPwQJVBnFEp-3" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=none;dashed=1;strokeColor=#C1CDDD;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="explain-2" parent="1" edge="1" source="step2" target="NVQlfBuTDGPwQJVBnFEp-6" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=none;dashed=1;strokeColor=#C1CDDD;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="explain-3" parent="1" edge="1" source="step3" target="NVQlfBuTDGPwQJVBnFEp-11" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=none;dashed=1;strokeColor=#C1CDDD;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="explain-4" parent="1" edge="1" source="step4" target="NVQlfBuTDGPwQJVBnFEp-8" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=none;dashed=1;strokeColor=#C1CDDD;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="explain-5" parent="1" edge="1" source="step5" target="NVQlfBuTDGPwQJVBnFEp-9" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=none;dashed=1;strokeColor=#C1CDDD;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="explain-6" parent="1" edge="1" source="step6" target="NVQlfBuTDGPwQJVBnFEp-15" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=none;dashed=1;strokeColor=#C1CDDD;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="explain-7" parent="1" edge="1" source="step7" target="NVQlfBuTDGPwQJVBnFEp-16" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=none;dashed=1;strokeColor=#C1CDDD;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="explain-8" parent="1" edge="1" source="step8" target="NVQlfBuTDGPwQJVBnFEp-17" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=none;dashed=1;strokeColor=#C1CDDD;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="explain-9" parent="1" edge="1" source="step9" target="NVQlfBuTDGPwQJVBnFEp-18" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=none;dashed=1;strokeColor=#C1CDDD;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="explain-10" parent="1" edge="1" source="step10" target="NVQlfBuTDGPwQJVBnFEp-19" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.5;endArrow=none;dashed=1;strokeColor=#C1CDDD;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

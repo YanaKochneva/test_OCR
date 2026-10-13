@@ -25,7 +25,7 @@
         <div><div class="upload-icon" aria-hidden="true">↑</div><strong>Перетащите файл сюда</strong><p>PDF или изображение: PNG, JPG, TIFF, BMP, WEBP</p><button class="link-button" type="button" id="browse">Выбрать файл</button><input id="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,application/pdf,image/*" hidden></div>
       </div>
       <div class="file-name" id="file-name"></div>
-      <div class="field"><label class="field-label" for="engine">Движок распознавания</label><select id="engine" class="text-input"><option value="docling">Docling — текущий OCR</option><option value="glm_ocr">GLM-OCR — VLM (требуется сервер модели)</option></select></div>
+      <div class="field"><label class="field-label" for="engine">Движок распознавания</label><select id="engine" class="text-input"><option value="docling">Docling — PP-OCRv5</option><option value="docling_glm">Docling + проверка GLM</option><option value="glm_ocr">GLM-OCR — VLM (требуется сервер модели)</option></select></div>
       <div class="field"><span class="field-label">Что подготовить</span><div class="formats">
         <label class="format"><input type="checkbox" name="output" value="pdf-searchable" checked disabled><span><b>PDF с текстом</b><small>Обязательный результат</small></span></label>
         <label class="format"><input type="checkbox" name="output" value="docx" checked><span><b>Word</b><small>Редактируемый DOCX</small></span></label>

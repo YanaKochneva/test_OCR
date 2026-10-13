@@ -1,6 +1,9 @@
 """Reconcile recognizer lines with structured layout without a reference document."""
 from __future__ import annotations
 
+from collections import Counter
+import re
+
 from docpipe.ir import BBox, Block, BlockType
 
 
@@ -18,6 +21,28 @@ def recover_unassigned_lines(blocks: list[Block], lines: list[tuple[str, BBox, f
             return intersection / area >= .6
         if any(covered(b) for b in result):
             continue
+        # A detector can join two columns into one line. Each block may cover
+        # less than 60% of that line, although together they already contain
+        # all its words. Do not create another overlapping copy of that text.
+        overlapping = []
+        overlap_area = 0.0
+        for block in result:
+            b = block.bbox
+            intersection = max(0, min(box.x1, b.x1) - max(box.x0, b.x0)) * max(
+                0, min(box.y1, b.y1) - max(box.y0, b.y0))
+            if intersection:
+                overlapping.append(block)
+                overlap_area += intersection
+        if len(overlapping) > 1 and overlap_area / area >= .6:
+            words = lambda value: Counter(re.findall(r'\w+', value.casefold()))
+            available = Counter()
+            for block in overlapping:
+                available.update(words(block.text or ''))
+                if block.table:
+                    for cell in block.table.cells:
+                        available.update(words(cell.text))
+            if not (words(text) - available):
+                continue
         kind = BlockType.TEXT
         if box.y1 < page_height * .07:
             kind = BlockType.HEADER

@@ -32,7 +32,8 @@ class DoclingEngine(LayoutOcrEngine):
             )
 
         self.mode = mode
-        self.languages = list(languages or ["eslav"])
+        self.warnings: list[str] = []
+        self.languages = list(languages or [os.getenv('DOCPIPE_OCR_LANGUAGE','cyrillic')])
         if len(self.languages) != 1:
             raise ValueError(
                 "RapidOCR supports one recognition language per pass; "
@@ -46,6 +47,11 @@ class DoclingEngine(LayoutOcrEngine):
         self._refinement_reader = None
         self._cyrillic_reader = None
         self._latin_reader = None
+        self._short_value_reader = None
+        self.glm_review = False
+        self._glm_reviewer = None
+        self._glm_line_reviewer = None
+        self._glm_line_failed = False
 
     def load(self) -> None:
         try:
@@ -244,28 +250,93 @@ class DoclingEngine(LayoutOcrEngine):
             blocks = recover_unassigned_lines(blocks, raw_lines, page_meta.height_pt)
             if os.getenv("DOCPIPE_OCR_LINE_REFINEMENT", "1") == "1":
                 from docpipe.stages.text_refinement import refine_text_blocks
-                blocks = refine_text_blocks(blocks, self._projected_lines(image,page_meta),page_meta.height_pt)
+                from docpipe.stages.masking import mask_layout_figures
+                text_image = (mask_layout_figures(image, blocks, page_meta)
+                              if os.getenv('DOCPIPE_OCR_MASK_FIGURES', '0') == '1'
+                              else image)
+                blocks = refine_text_blocks(blocks, self._projected_lines(text_image,page_meta),page_meta.height_pt)
                 blocks = self._refine_table_cells(blocks,image,page_meta)
+                if os.getenv('DOCPIPE_OCR_TABLE_RECONCILIATION', '1') == '1':
+                    from docpipe.stages.table_reconciliation import reconcile_table_lines
+                    blocks = reconcile_table_lines(blocks, raw_lines)
+
+            if self.glm_review:
+                from docpipe.engines.glm_crop_reader import GlmCropReader
+                from docpipe.stages.glm_review import review_blocks
+                if self._glm_reviewer is None:
+                    self._glm_reviewer = GlmCropReader()
+                    self._glm_reviewer.load()
+                blocks, events = review_blocks(
+                    blocks, image, page_meta, self._glm_reviewer,
+                    self._get_refinement_reader(), max_requests=2)
+                for event in events:
+                    if event.get('error'):
+                        self.warnings.append(f"GLM review page {page_meta.index+1}: {event['error']}")
+                        if event['error'] != 'GLM crop output truncated':
+                            self.glm_review = False
+                if events:
+                    accepted = sum(event['accepted'] and event.get('candidate') != ' '.join(event['original'].split()) for event in events)
+                    self.warnings.append(f'GLM review page {page_meta.index+1}: requests={len(events)}, corrections={accepted}; details in application log')
 
             return [
                 block.model_copy(update={"order": index})
                 for index, block in enumerate(blocks)
             ]
 
+    def _get_refinement_reader(self):
+        from rapidocr import RapidOCR
+        from rapidocr.utils.typings import OCRVersion, ModelType, LangRec
+        if self._refinement_reader is None:
+            params = {
+                "Det.ocr_version":OCRVersion.PPOCRV5, "Det.model_type":ModelType.MOBILE,
+                "Cls.ocr_version":OCRVersion.PPOCRV4, "Cls.model_type":ModelType.MOBILE,
+                "Rec.ocr_version":OCRVersion.PPOCRV5, "Rec.model_type":ModelType.MOBILE,
+                "Rec.lang_type":LangRec(self.languages[0]), "Global.text_score":.5,
+            }
+            self._refinement_reader = RapidOCR(params=params)
+        return self._refinement_reader
+
+    def prepare_raster(self, raster):
+        if os.getenv('DOCPIPE_OCR_ORIENTATION', '0') == '0':
+            return raster
+        from docpipe.stages.orientation import correct_orientation
+        corrected = correct_orientation(raster, self._get_refinement_reader)
+        if corrected is not raster:
+            import logging
+            logging.getLogger(__name__).info(
+                'Corrected page orientation: rotation=%s', corrected.rotation)
+        return corrected
+
     def _projected_lines(self, image, meta):
         """Recognize horizontal ink bands missed by full-page detection."""
         from rapidocr import RapidOCR
         from rapidocr.utils.typings import OCRVersion, ModelType, LangRec
-        if self._refinement_reader is None:
-            self._refinement_reader = RapidOCR(params={
-                "Det.ocr_version":OCRVersion.PPOCRV5, "Det.model_type":ModelType.MOBILE,
-                "Cls.ocr_version":OCRVersion.PPOCRV4, "Cls.model_type":ModelType.MOBILE,
-                "Rec.ocr_version":OCRVersion.PPOCRV5, "Rec.model_type":ModelType.MOBILE,
-                "Rec.lang_type":LangRec(self.languages[0]), "Global.text_score":.75,
-            })
+        self._get_refinement_reader()
         import numpy as np
+        if (getattr(self,'_has_measured_cell_crop',False)
+                and os.getenv('DOCPIPE_OCR_CLEAN_CELL_BORDERS','0')=='1'):
+            from docpipe.stages.cell_borders import clean_proven_cell_borders
+            image=clean_proven_cell_borders(image)
         dark=np.asarray(image.convert("L"))<170
-        active=dark.sum(axis=1)>max(12,image.width*.008)
+        if getattr(self,'_inside_table_cell',False) and os.getenv('DOCPIPE_OCR_CLEAN_CELL_BORDERS','0')=='1':
+            import cv2
+            ink=dark.astype('uint8')
+            vertical=cv2.morphologyEx(ink,cv2.MORPH_OPEN,np.ones((max(30,image.height//3),1),np.uint8))
+            horizontal=cv2.morphologyEx(ink,cv2.MORPH_OPEN,np.ones((1,max(30,image.width//3)),np.uint8))
+            # Erase border remnants only; an internal digit "1" or underline
+            # must not be classified as a table rule.
+            if image.width>12:vertical[:,6:-6]=0
+            if image.height>12:horizontal[6:-6,:]=0
+            dark=dark & ~(vertical.astype(bool)|horizontal.astype(bool))
+            # Use the cleaned image for recognition as well as line detection.
+            cleaned=np.asarray(image.convert('RGB')).copy()
+            cleaned[(vertical|horizontal).astype(bool)]=255
+            image=Image.fromarray(cleaned)
+        # Short numeric values have only a few dark pixels on each scan row.
+        # A page-sized minimum silently excluded them in narrow table cells.
+        sparse=(os.getenv('DOCPIPE_OCR_SMALL_VALUES','1')=='1'
+                and getattr(self,'_inside_table_cell',False))
+        active=dark.sum(axis=1)>(max(2,image.width*.003) if sparse else max(12,image.width*.008))
         indices=np.flatnonzero(active)
         bands=[]
         for y in indices:
@@ -274,26 +345,83 @@ class DoclingEngine(LayoutOcrEngine):
         output=[]
         for top,last in bands:
             bottom=last+1
-            if bottom-top<8 or bottom-top>max(80,image.height*.04):continue
+            if bottom-top<(5 if sparse else 8) or bottom-top>max(80,image.height*.04):continue
             pixels=dark[top:bottom]
             # Exclude horizontal rules rather than transcribing table borders.
             if (pixels.sum(axis=1)>image.width*.6).any():continue
             columns=np.flatnonzero(pixels.sum(axis=0)>=2)
-            if len(columns)<10:continue
+            if len(columns)<(3 if sparse else 10):continue
             left,right=int(columns[0]),int(columns[-1])+1
             crop=image.crop((max(0,left-6),max(0,top-6),min(image.width,right+6),min(image.height,bottom+6)))
             result=self._refinement_reader(crop,use_det=False,use_cls=False)
-            if not result.txts:continue
-            text=result.txts[0].strip();score=float(result.scores[0])
+            text=result.txts[0].strip() if result.txts else ''
+            score=float(result.scores[0]) if result.txts else 0.0
+            if os.getenv('DOCPIPE_OCR_WORD_PASS','0')=='1' and score<.95 and '\\' not in text:
+                from docpipe.stages.word_refinement import recognize_separated_words
+                word_result=recognize_separated_words(crop,self._refinement_reader)
+                if word_result is not None and word_result[1]>score+.02:
+                    text,score=word_result
+            if os.getenv('DOCPIPE_OCR_CONSENSUS','1')=='1':
+                from docpipe.stages.recognition_consensus import recognize_with_consensus
+                decision=recognize_with_consensus(crop,self._refinement_reader,(text,score))
+                text,score=decision.text,decision.confidence
+                if not decision.agreed:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        'OCR candidates disagree: page=%s y=%s confidence=%.3f; primary retained',
+                        meta.index+1,top,score)
             from docpipe.stages.word_refinement import refine_mixed_words
+            glm_corroborated=False
+            if (getattr(self,'_has_measured_cell_crop',False) and text and .65<=score<.85
+                    and os.getenv('DOCPIPE_OCR_GLM_LINE_CONFIRMATION','0')=='1'
+                    and not self._glm_line_failed and getattr(self,'_glm_line_attempts',0)<20):
+                self._glm_line_attempts=getattr(self,'_glm_line_attempts',0)+1
+                try:
+                    if self._glm_line_reviewer is None:
+                        from docpipe.engines.glm_crop_reader import GlmCropReader
+                        self._glm_line_reviewer=GlmCropReader()
+                        self._glm_line_reviewer.timeout=30
+                        self._glm_line_reviewer.load()
+                    alternative=self._glm_line_reviewer.read_single_line(crop)
+                    from docpipe.stages.line_confirmation import same_visible_line
+                    glm_corroborated=same_visible_line(text,alternative)
+                except ModelError as exc:
+                    self.warnings.append(f'GLM line confirmation unavailable: {exc}')
+                    self._glm_line_failed=True
+            alternate_corroborated=False
+            if (getattr(self,'_inside_table_cell',False) and score<.85
+                    and self.languages[0] in {'cyrillic','eslav'}
+                    and os.getenv('DOCPIPE_OCR_ALTERNATE_LINES','0')=='1'
+                    and getattr(self,'_alternate_line_attempts',0)<80):
+                self._alternate_line_attempts=getattr(self,'_alternate_line_attempts',0)+1
+                if self._short_value_reader is None:
+                    language=LangRec.ESLAV if self.languages[0]!='eslav' else LangRec.CYRILLIC
+                    self._short_value_reader=RapidOCR(params={
+                        'Det.ocr_version':OCRVersion.PPOCRV5,'Det.model_type':ModelType.MOBILE,
+                        'Cls.ocr_version':OCRVersion.PPOCRV4,'Cls.model_type':ModelType.MOBILE,
+                        'Rec.ocr_version':OCRVersion.PPOCRV5,'Rec.model_type':ModelType.MOBILE,
+                        'Rec.lang_type':language,'Global.text_score':.4})
+                from docpipe.stages.alternate_recognition import recover_uncertain_line
+                recovered=recover_uncertain_line(crop,(text,score),self._short_value_reader)
+                if recovered is not None:
+                    text,score=recovered
+                    alternate_corroborated=True
             def word_reader(word_image,**kwargs):
                 primary=self._refinement_reader(word_image,**kwargs)
-                if primary.txts and float(primary.scores[0])>=.95:return primary
+                from docpipe.stages.word_refinement import is_mixed_word, select_word_result
+                recheck = os.getenv('DOCPIPE_OCR_LATIN_RECHECK','0') == '1'
+                if primary.txts and float(primary.scores[0])>=.95 and not (recheck and is_mixed_word(primary.txts[0])):
+                    return primary
                 if self._latin_reader is None:
-                    self._latin_reader=RapidOCR(params={
+                    params = {
+                        'Det.ocr_version': OCRVersion.PPOCRV5, 'Det.model_type': ModelType.MOBILE,
+                        'Cls.ocr_version': OCRVersion.PPOCRV4, 'Cls.model_type': ModelType.MOBILE,
                         "Rec.ocr_version":OCRVersion.PPOCRV5,"Rec.model_type":ModelType.MOBILE,
-                        "Rec.lang_type":LangRec.LATIN,"Global.text_score":.75})
+                        "Rec.lang_type":LangRec.LATIN,"Global.text_score":.75}
+                    self._latin_reader=RapidOCR(params=params)
                 alternative=self._latin_reader(word_image,**kwargs)
+                if recheck:
+                    return select_word_result(primary, alternative)
                 return alternative if alternative.txts and (not primary.txts or alternative.scores[0]>primary.scores[0]) else primary
             text=refine_mixed_words(crop,text,word_reader)
             if '\\' in text:
@@ -307,6 +435,8 @@ class DoclingEngine(LayoutOcrEngine):
             if '\\' in text and any('А'<=c<='я' for c in text):
                 if self._cyrillic_reader is None:
                     self._cyrillic_reader=RapidOCR(params={
+                        'Det.ocr_version':OCRVersion.PPOCRV5,'Det.model_type':ModelType.MOBILE,
+                        'Cls.ocr_version':OCRVersion.PPOCRV4,'Cls.model_type':ModelType.MOBILE,
                         "Rec.ocr_version":OCRVersion.PPOCRV5,
                         "Rec.model_type":ModelType.MOBILE,
                         "Rec.lang_type":LangRec.CYRILLIC,
@@ -318,7 +448,34 @@ class DoclingEngine(LayoutOcrEngine):
                     selected=choose_path_candidate(text,alternative.txts[0].strip())
                     if selected!=text:
                         text=selected;score=float(alternative.scores[0])
-            if score<.85 or not text:continue
+            minimum=float(os.getenv('DOCPIPE_OCR_MIN_LINE_CONFIDENCE','.85'))
+            if (getattr(self,'_has_measured_cell_crop',False)
+                    and os.getenv('DOCPIPE_OCR_MEASURED_CELL_RECOVERY','0')=='1'):
+                minimum=.75
+            corroborated = alternate_corroborated or glm_corroborated
+            if (text and .55 <= score < minimum and len(text.split()) <= 3
+                    and getattr(self, '_inside_table_cell', False)
+                    and os.getenv('DOCPIPE_OCR_SHORT_VALUE_CONSENSUS', '1') == '1'):
+                if self._short_value_reader is None:
+                    # Use another trained language head, not repeated calls to
+                    # the same model. Preserve its actual confidence in logs.
+                    language = LangRec.ESLAV if self.languages[0] != 'eslav' else LangRec.CYRILLIC
+                    self._short_value_reader = RapidOCR(params={
+                        'Det.ocr_version':OCRVersion.PPOCRV5,'Det.model_type':ModelType.MOBILE,
+                        'Cls.ocr_version':OCRVersion.PPOCRV4,'Cls.model_type':ModelType.MOBILE,
+                        'Rec.ocr_version': OCRVersion.PPOCRV5,
+                        'Rec.model_type': ModelType.MOBILE,
+                        'Rec.lang_type': language, 'Global.text_score': .4,
+                    })
+                alternate = self._short_value_reader(crop, use_det=False, use_cls=False)
+                from docpipe.stages.short_value_consensus import corroborates_short_value
+                corroborated = corroborates_short_value(text, score, alternate)
+                if corroborated:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        'Recovered uncertain short cell value: page=%s text=%r confidence=%.3f alternate=%.3f',
+                        meta.index + 1, text, score, float(alternate.scores[0]))
+            if (score<minimum and not corroborated) or not text:continue
             box=BBox(x0=left*meta.width_pt/image.width,x1=right*meta.width_pt/image.width,
                      y0=top*meta.height_pt/image.height,y1=bottom*meta.height_pt/image.height)
             output.append((text,box,score))
@@ -328,13 +485,28 @@ class DoclingEngine(LayoutOcrEngine):
         """Read inside each cell so neighboring columns cannot contaminate text."""
         from rapidfuzz.distance import Levenshtein
         result=[]
+        detection_retries = 0
+        self._alternate_line_attempts = 0
+        self._glm_line_attempts = 0
         sx,sy=image.width/meta.width_pt,image.height/meta.height_pt
         for block in blocks:
             if block.table is None:
                 result.append(block);continue
+            if os.getenv('DOCPIPE_OCR_MISSING_CELL_GRID', '0') == '1':
+                from docpipe.stages.table_coverage import materialize_missing_cells
+                block = materialize_missing_cells(block, image, meta)
             cells=[]
+            from docpipe.stages.table_geometry import measured_cell_boxes
+            measured=measured_cell_boxes(block,image,meta)
+            reading={}
+            if not measured and os.getenv('DOCPIPE_OCR_ADAPTIVE_CELL_CROPS','1')=='1':
+                from docpipe.stages.table_geometry import adaptive_reading_boxes
+                reading=adaptive_reading_boxes(block,image,meta)
             for cell in block.table.cells:
-                box=cell.bbox
+                box=measured.get((cell.row,cell.col),cell.bbox)
+                if (cell.row,cell.col) in measured:
+                    cell=cell.model_copy(update={'bbox':box})
+                box=reading.get((cell.row,cell.col),box)
                 if box.x1-box.x0<15 or box.y1-box.y0<5:
                     cells.append(cell);continue
                 left,top=max(0,int(box.x0*sx)+2),max(0,int(box.y0*sy)+2)
@@ -343,11 +515,32 @@ class DoclingEngine(LayoutOcrEngine):
                     cells.append(cell);continue
                 crop=image.crop((left,top,right,bottom))
                 local=PageMeta(meta.index,(right-left)/sx,(bottom-top)/sy,0,meta.dpi)
-                lines=self._projected_lines(crop,local)
+                previous=getattr(self,'_inside_table_cell',False)
+                previous_geometry=getattr(self,'_has_measured_cell_crop',False)
+                self._inside_table_cell=True
+                self._has_measured_cell_crop=(cell.row,cell.col) in measured or (cell.row,cell.col) in reading
+                try:
+                    lines=self._projected_lines(crop,local)
+                finally:
+                    self._inside_table_cell=previous
+                    self._has_measured_cell_crop=previous_geometry
                 candidate=' '.join(t for t,b,s in lines)
+                from docpipe.stages.cell_recovery import detected_cell_text, accepts_cell_candidate, equivalent_cell_words
                 normal=lambda text:' '.join(text.casefold().split())
                 similarity=Levenshtein.normalized_similarity(normal(cell.text),normal(candidate))
-                if candidate and (not cell.text.strip() or (similarity>=.8 and len(candidate)>=len(cell.text)*.9)):
+                eligible = accepts_cell_candidate(cell.text,candidate) or (
+                    bool(candidate) and equivalent_cell_words(cell.text,candidate))
+                if (not eligible and detection_retries < 20
+                        and os.getenv('DOCPIPE_OCR_CELL_DETECTION_RECOVERY','1') == '1'):
+                    detection_retries += 1
+                    detected = detected_cell_text(crop, self._get_refinement_reader())
+                    detected_similarity = Levenshtein.normalized_similarity(normal(cell.text),normal(detected))
+                    if accepts_cell_candidate(cell.text,detected):
+                        candidate, similarity = detected, detected_similarity
+                if os.getenv('DOCPIPE_OCR_MERGE_CANDIDATES','0')=='1' and candidate and similarity>=.8:
+                    from docpipe.stages.text_refinement import merge_without_deletions
+                    candidate=merge_without_deletions(cell.text,candidate)
+                if accepts_cell_candidate(cell.text,candidate):
                     cell=cell.model_copy(update={'text':candidate})
                 elif candidate and cell.text.strip():
                     import re
@@ -358,7 +551,7 @@ class DoclingEngine(LayoutOcrEngine):
                         # rejects a candidate; this word was reread from pixels.
                         cell=cell.model_copy(update={'text':new_word+cell.text[len(old_word):]})
                 cells.append(cell)
-            result.append(block.model_copy(update={'table':block.table.model_copy(update={'cells':cells})}))
+            result.append(block.model_copy(update={'table':block.table.model_copy(update={'cells':cells, 'html': None})}))
         return result
 
     @staticmethod
@@ -504,11 +697,14 @@ class DoclingEngine(LayoutOcrEngine):
                         getattr(cell, "start_row_offset_idx", row_idx),
                         getattr(cell, "start_col_offset_idx", col_idx),
                     )
-                    if cell_key in seen_cells:
-                        continue
-                    seen_cells.add(cell_key)
-
                     cell_text = str(getattr(cell, "text", "") or "")
+                    # Deduplicate repeated grid aliases, not distinct payloads
+                    # that share a slot with an empty merged placeholder.
+                    signature = (*cell_key, cell_text,
+                                 getattr(cell, 'row_span', 1), getattr(cell, 'col_span', 1))
+                    if signature in seen_cells:
+                        continue
+                    seen_cells.add(signature)
 
                     cell_bbox = getattr(cell, "bbox", None)
 
@@ -694,7 +890,6 @@ class DoclingEngine(LayoutOcrEngine):
 
         if "mode" not in kwargs and "force_full_page_ocr" in params:
             kwargs["force_full_page_ocr"] = True
-
         return cls(**kwargs)
 
     @staticmethod

@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.0.2", "ruff==0.14.2", "mypy==1.18.2"]
+dev = ["ruff==0.14.2", "mypy==1.18.2"]
 docling = ["docling==2.134.0"]
 paddle = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
 vl = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
@@ -43,15 +43,6 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 docpipe = ["api/static/*.html"]
-
-[tool.pytest.ini_options]
-pythonpath = ["src"]
-markers = [
-  "engine_docling: тесты реального Docling",
-  "engine_ppstructure: тесты реального PaddleOCR PPStructure",
-  "engine_paddleocr_vl: тесты PaddleOCR-VL",
-]
-addopts = "-ra"
 
 [tool.ruff]
 line-length = 100

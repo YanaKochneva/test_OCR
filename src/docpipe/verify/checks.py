@@ -46,6 +46,65 @@ def _check(name: str, status: str, detail: str) -> dict:
     return {"check": name, "status": status, "detail": detail}
 
 
+def _verify_docx(doc: Document, out_dir: Path, checks: list[dict]) -> None:
+    """Check page anchoring and native-table frame budgets, not visual fidelity."""
+    path=out_dir/'document.docx'
+    if not path.is_file():
+        checks.append(_check('docx_structure','FAIL','document.docx is missing'))
+        return
+    import xml.etree.ElementTree as ET
+    from zipfile import ZipFile
+    ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+        'wp':'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing',
+        'a':'http://schemas.openxmlformats.org/drawingml/2006/main',
+        'r':'http://schemas.openxmlformats.org/officeDocument/2006/relationships'}
+    errors=[]
+    try:
+        with ZipFile(path) as archive:
+            root=ET.fromstring(archive.read('word/document.xml'))
+            body=root.find('w:body',ns)
+            sections=root.findall('.//w:sectPr',ns)
+            if len(sections)!=len(doc.pages):errors.append('section/page count mismatch')
+            canvases=[p for p in body.findall('w:p',ns)
+                if (p.find('w:pPr/w:pStyle',ns) is not None
+                    and p.find('w:pPr/w:pStyle',ns).get('{'+ns['w']+'}val')=='DocpipeAnchor')]
+            if len(canvases)!=len(doc.pages):errors.append('expected one canvas anchor per source page')
+            if body.findall('w:tbl',ns):errors.append('table remains in body flow')
+            ids=[]
+            for page,canvas in zip(doc.pages,canvases):
+                for anchor in canvas.findall('.//wp:anchor',ns):
+                    prop=anchor.find('wp:docPr',ns);ids.append(prop.get('id'))
+                    horizontal=anchor.find('wp:positionH',ns);vertical=anchor.find('wp:positionV',ns)
+                    if horizontal.get('relativeFrom')!='page' or vertical.get('relativeFrom')!='page':
+                        errors.append(f'page {page.index+1}: object is not page-relative')
+                    x=float(horizontal.find('wp:posOffset',ns).text)/12700
+                    y=float(vertical.find('wp:posOffset',ns).text)/12700
+                    extent=anchor.find('wp:extent',ns)
+                    width=float(extent.get('cx'))/12700;height=float(extent.get('cy'))/12700
+                    if min(x,y)<-.05 or x+width>page.width_pt+.05 or y+height>page.height_pt+.05:
+                        errors.append(f'page {page.index+1}: {prop.get("name")} exceeds page')
+                    for table in anchor.findall('.//w:tbl',ns):
+                        rows=table.findall('w:tr',ns)
+                        heights=[row.find('w:trPr/w:trHeight',ns) for row in rows]
+                        if any(h is None or h.get('{'+ns['w']+'}hRule')!='exact' for h in heights):
+                            errors.append('native table row can grow outside its frame')
+                            continue
+                        top=table.find('w:tblPr/w:tblBorders/w:top',ns)
+                        bottom=table.find('w:tblPr/w:tblBorders/w:bottom',ns)
+                        borders=sum(float(e.get('{'+ns['w']+'}sz','0'))/8
+                                    for e in (top,bottom) if e is not None)
+                        required=sum(float(h.get('{'+ns['w']+'}val'))/20 for h in heights)+len(rows)*borders+1
+                        if required>height+.1:errors.append('native table exceeds frame height budget')
+            if len(ids)!=len(set(ids)):errors.append('duplicate drawing object identifiers')
+            tables=root.findall('.//w:tbl',ns)
+            expected=sum(b.table is not None for p in doc.pages for b in p.blocks)
+            if len(tables)!=expected:errors.append('native table count mismatch')
+        checks.append(_check('docx_structure','FAIL' if errors else 'PASS',
+            '; '.join(errors[:10]) if errors else f'{len(canvases)} page anchors; {len(tables)} native tables; frame budgets valid'))
+    except Exception as exc:
+        checks.append(_check('docx_structure','FAIL',f'{type(exc).__name__}: {exc}'))
+
+
 def _load_document(target: Path) -> tuple[Document, Path]:
     if target.is_dir():
         json_path, out_dir = target / "document.json", target
@@ -103,9 +162,9 @@ def _toc_coverage(doc: Document) -> list[str]:
 
 
 def _verify_pdf(doc: Document, out_dir: Path, checks: list[dict]) -> None:
-    pdf_path = out_dir / "document-searchable.pdf"
+    pdf_path = out_dir / "document-positional.pdf"
     if not pdf_path.is_file():
-        checks.append(_check("searchable_pdf", "FAIL", "document-searchable.pdf is missing"))
+        checks.append(_check("searchable_pdf", "FAIL", "document-positional.pdf is missing"))
         return
     try:
         import pypdfium2 as pdfium
@@ -131,6 +190,19 @@ def _verify_pdf(doc: Document, out_dir: Path, checks: list[dict]) -> None:
         return
 
     checks.append(_check("searchable_pdf", "PASS", f"opened; pages={page_count}"))
+    try:
+        import pikepdf
+        hidden = []
+        with pikepdf.Pdf.open(pdf_path) as reconstructed:
+            for index, page in enumerate(reconstructed.pages):
+                if any(str(item.operator) == 'Tr' and int(item.operands[0]) == 3
+                       for item in pikepdf.parse_content_stream(page)):
+                    hidden.append(index + 1)
+        checks.append(_check('visible_pdf_text','FAIL' if hidden else 'PASS',
+                             f'invisible text pages={hidden}' if hidden else
+                             'reconstructed PDF uses visible text; no invisible OCR overlay'))
+    except Exception as exc:
+        checks.append(_check('visible_pdf_text','FAIL',f'cannot inspect PDF content: {exc}'))
     checks.append(_check("searchable_pages", "PASS" if page_count == len(doc.pages) else "FAIL",
                          f"PDF={page_count}, IR={len(doc.pages)}"))
     extracted = "\n".join(extracted_pages)
@@ -245,6 +317,12 @@ def verify_document(target: Path | str) -> dict:
                          "; ".join(flow_errors[:10]) if flow_errors else "figures referenced in Markdown and HTML"))
 
     _verify_pdf(doc, out_dir, checks)
+    _verify_docx(doc, out_dir, checks)
+    from docpipe.style_review import review_items
+    pending=review_items(doc)
+    checks.append(_check('typography_review','WARN' if pending else 'PASS',
+        f'{len(pending)} fragments need review; output is preliminary' if pending else
+        'no ambiguity markers; exact visual fidelity requires separate validation'))
     required = ("document.md", "document.html", "document-flow.pdf")
     missing = [name for name in required if not (out_dir / name).is_file()]
     checks.append(_check("artifacts", "FAIL" if missing else "PASS",

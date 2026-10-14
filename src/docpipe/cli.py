@@ -22,7 +22,7 @@ def main() -> int:
     q.add_argument(
         "--outputs",
         nargs="+",
-        default=["md", "html", "pdf-flow", "pdf-searchable"],
+        default=["md", "html", "pdf-flow", "pdf-positional", "docx"],
     )
 
     v = sub.add_parser("verify")
@@ -81,7 +81,7 @@ def main() -> int:
             ),
         )
         (a.out / "document.json").write_text(doc.model_dump_json(indent=2), encoding="utf-8")
-        outputs = set(a.outputs) | {"md", "html", "pdf-flow", "pdf-searchable"}
+        outputs = set(a.outputs) | {"md", "html", "pdf-flow", "pdf-positional", "docx"}
         if "md" in outputs:
             render_markdown(doc, a.out / "document.md")
         if "html" in outputs:
@@ -89,18 +89,14 @@ def main() -> int:
         if "pdf-flow" in outputs:
             render_pdf_flow(doc, a.out / "document-flow.pdf", a.out)
         if "pdf-searchable" in outputs:
-            from docpipe.io.normalize import normalize_input
-            normalized = normalize_input(a.file, cfg)
-            try:
-                render_pdf_searchable(doc, normalized, a.out / "document-searchable.pdf")
-            finally:
-                if normalized != a.file:
-                    normalized.unlink(missing_ok=True)
+            render_pdf_searchable(doc, a.file, a.out / "document-searchable.pdf")
         if "pdf-positional" in outputs:
             render_pdf_positional(doc, a.out / "document-positional.pdf", a.out)
         if "docx" in outputs:
             render_docx(doc, a.out / "document.docx", a.out)
         from docpipe.verify.checks import verify_document
+        from docpipe.style_review import write_style_review
+        write_style_review(doc,a.out)
         verification = verify_document(a.out)
         (a.out / "verification.json").write_text(
             json.dumps(verification, ensure_ascii=False, indent=2) + "\n",

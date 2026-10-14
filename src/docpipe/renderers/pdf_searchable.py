@@ -1,94 +1,15 @@
-from __future__ import annotations
-
-from io import BytesIO
+"""Compatibility entry point for a reconstructed, searchable PDF."""
 from pathlib import Path
 
-from reportlab.pdfgen import canvas
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-
 from docpipe.ir import Document
-from docpipe.renderers.text_layout import wrap_text
-from docpipe.renderers.fonts import require_font
-
-
-def _font_name() -> str:
-    path = require_font()
-    name = "DocpipeOverlay"
-    if name not in pdfmetrics.getRegisteredFontNames():
-        pdfmetrics.registerFont(TTFont(name, str(path)))
-    return name
-
-
-def _make_overlay(document: Document, page_index: int, width: float, height: float) -> bytes:
-    font = _font_name()
-    buf = BytesIO()
-    c = canvas.Canvas(buf, pagesize=(width, height))
-    rotation = document.pages[page_index].rotation % 360
-    transforms = {
-        90: (0, 1, -1, 0, width, 0),
-        180: (-1, 0, 0, -1, width, height),
-        270: (0, -1, 1, 0, 0, height),
-    }
-    if rotation in transforms:
-        c.transform(*transforms[rotation])
-    visible_height = document.pages[page_index].height_pt
-    c.setFont(font, 8)
-    text_mode = 3  # PDF text rendering mode: invisible.
-    for block in sorted(document.pages[page_index].blocks, key=lambda item: item.order):
-        regions = ([(cell.text, cell.bbox) for cell in sorted(
-            block.table.cells, key=lambda cell: (cell.row, cell.col)
-        )] if block.table and block.table.cells else [(block.text, block.bbox)])
-        for content, box in regions:
-            if not content:
-                continue
-            available_width = max(1, box.x1 - box.x0)
-            available_height = max(1, box.y1 - box.y0)
-            size = min(11, available_height)
-            # Invisible text must still stay within the source region, otherwise
-            # PDF extractors lose lines outside the page or corrupt selection.
-            while True:
-                lines = wrap_text(content, available_width, (size, False, False),
-                                  font_metric_mode="dejavu").splitlines() or [""]
-                if len(lines) * size <= available_height or size <= .5:
-                    break
-                size = max(.5, size * .85)
-            text = c.beginText(box.x0, visible_height - box.y0 - size)
-            text.setFont(font, size)
-            text.setLeading(size)
-            text.setTextRenderMode(text_mode)
-            for line in lines:
-                text.textLine(line)
-            c.drawText(text)
-    c.showPage()
-    c.save()
-    return buf.getvalue()
 
 
 def render(document: Document, source_pdf: Path, out: Path) -> Path:
-    """Добавить невидимый Unicode-текст поверх неизменённых исходных страниц.
+    """Reconstruct visible text and objects without copying source pages.
 
-    Требует pikepdf. Исходные image streams не декодируются и не пересобираются.
+    ``source_pdf`` remains in the signature for existing callers only.
+    A reconstructed PDF is searchable through its visible Unicode text.
     """
-    try:
-        import pikepdf
-    except ImportError as exc:
-        raise RuntimeError("Для searchable-PDF нужен pikepdf; установите пакет из constraints.txt") from exc
+    from docpipe.renderers.pdf_positional import render as reconstruct
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with pikepdf.Pdf.open(str(source_pdf)) as pdf:
-        if len(pdf.pages) != len(document.pages):
-            raise ValueError("Число страниц исходного PDF и IR не совпадает")
-        for index, page in enumerate(pdf.pages):
-            box = page.cropbox or page.mediabox
-            x0, y0, x1, y1 = map(float, box)
-            width, height = x1 - x0, y1 - y0
-            overlay_bytes = _make_overlay(document, index, width, height)
-            # Overlay coordinates were explicitly mapped to raw page space.
-            # Avoid applying the page rotation a second time during placement.
-            page.obj.Rotate = 0
-            with pikepdf.Pdf.open(BytesIO(overlay_bytes)) as overlay:
-                page.add_overlay(overlay.pages[0], pikepdf.Rectangle(x0, y0, x1, y1))
-            page.obj.Rotate = document.pages[index].rotation % 360
-        pdf.save(str(out))
-    return out
+    return reconstruct(document, out, out.parent)

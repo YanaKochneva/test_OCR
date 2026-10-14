@@ -25,8 +25,10 @@ figures:
   table_fallback_to_figure: true
 render:
   include_page_markers: true
-  headers_footers: drop
+  headers_footers: keep
   positional: false
+  # External DOCX formatting standard; retains source page geometry and OCR text.
+  formatting_reference: null
 debug: false
 api:
   default_engine: docling

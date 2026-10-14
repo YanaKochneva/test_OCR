@@ -16,6 +16,7 @@ def collision_free_text_tops(
     *,
     gap_pt: float = 1.5,
     font_metric_mode: str = "arial",
+    height_for: Callable[[Block], float] | None = None,
 ) -> dict[int, float]:
     """Return page y positions that keep rendered text glyph areas apart.
 
@@ -58,6 +59,8 @@ def collision_free_text_tops(
             from docpipe.renderers.table_layout import build_table_layout
             visual_height = sum(build_table_layout(block).row_heights)
             visual_width = width
+        if height_for is not None:
+            visual_height = height_for(block)
         top = box.y0
 
         # A shift can create a new intersection with an earlier object in a

@@ -39,8 +39,9 @@ class FigureConfig(BaseModel):
 class RenderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     include_page_markers: bool = True
-    headers_footers: Literal["keep", "drop"] = "drop"
+    headers_footers: Literal["keep", "drop"] = "keep"
     positional: bool = False
+    formatting_reference: Path | None = None
 
 
 class ApiConfig(BaseModel):

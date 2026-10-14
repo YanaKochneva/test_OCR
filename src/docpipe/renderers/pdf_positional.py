@@ -8,16 +8,17 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 from docpipe.ir import BlockType, Document
-from docpipe.renderers.fonts import find_bold_font, require_font
+from docpipe.renderers.fonts import find_bold_font, require_font, font_path
 from docpipe.renderers.table_layout import build_table_layout
-from docpipe.renderers.text_layout import collision_free_text_tops
 from docpipe.renderers.typography import TABLE_FONT_PT, text_style
 
 
 def _register_fonts() -> tuple[str, str]:
-    regular_path = require_font()
+    arial=Path('C:/Windows/Fonts/arial.ttf')
+    regular_path = arial if arial.is_file() else require_font()
     regular_name = "DocpipePositional"
-    bold_path = find_bold_font()
+    arial_bold=Path('C:/Windows/Fonts/arialbd.ttf')
+    bold_path = arial_bold if arial.is_file() and arial_bold.is_file() else find_bold_font()
     bold_name = "DocpipePositionalBold" if bold_path else regular_name
     if regular_name not in pdfmetrics.getRegisteredFontNames():
         pdfmetrics.registerFont(TTFont(regular_name, str(regular_path)))
@@ -81,7 +82,7 @@ def _wrap_line(text: str, width: float, font: str, size: float) -> list[str]:
 
 def _draw_table(pdf, block, page_height: float, regular_font: str,
                 invisible: bool = False, top: float | None = None) -> None:
-    layout = build_table_layout(block)
+    layout = build_table_layout(block, preserve_geometry=True)
     top = block.bbox.y0 if top is None else top
     if not invisible:
         pdf.saveState()
@@ -97,38 +98,104 @@ def _draw_table(pdf, block, page_height: float, regular_font: str,
     y_positions = [top]
     for height in layout.row_heights:
         y_positions.append(y_positions[-1] + height)
+    source_cells={(cell.row,cell.col):cell for cell in block.table.cells}
 
     if not invisible:
-        pdf.setStrokeColor(colors.HexColor("#333333"))
-        pdf.setLineWidth(0.5)
+        pdf.setStrokeColor(colors.HexColor(block.table.border_color or '#333333'))
+        pdf.setLineWidth(block.table.border_width_pt or .5)
+        occupied={(row,col) for cell in layout.cells
+                  for row in range(cell.row,cell.row+cell.rowspan)
+                  for col in range(cell.col,cell.col+cell.colspan)}
         for row in range(layout.rows):
             for col in range(layout.cols):
-                x0, x1 = x_positions[col], x_positions[col + 1]
-                top, bottom = y_positions[row], y_positions[row + 1]
-                pdf.rect(x0, page_height - bottom, x1 - x0, bottom - top, stroke=1, fill=0)
+                if (row,col) not in occupied:
+                    pdf.rect(x_positions[col],page_height-y_positions[row+1],
+                             layout.column_widths[col],layout.row_heights[row],stroke=1,fill=0)
+        for cell in layout.cells:
+            x0, x1 = x_positions[cell.col], x_positions[cell.col + cell.colspan]
+            top, bottom = y_positions[cell.row], y_positions[cell.row + cell.rowspan]
+            source=source_cells.get((cell.row,cell.col))
+            if source and source.background_color:
+                pdf.setFillColor(colors.HexColor(source.background_color))
+            pdf.rect(x0, page_height - bottom, x1 - x0, bottom - top, stroke=1,
+                     fill=int(bool(source and source.background_color)))
+        pdf.setFillColor(colors.black)
 
     for cell in layout.cells:
+        source=source_cells.get((cell.row,cell.col))
+        if source and source.lines:
+            for line in source.lines:
+                _draw_source_line(pdf,line,page_height,regular_font)
+            continue
         x0 = x_positions[cell.col]
         x1 = x_positions[cell.col + cell.colspan]
         top = y_positions[cell.row]
         bottom = y_positions[cell.row + cell.rowspan]
+        size = _fitted_size(cell.text, max(1, x1-x0-4), max(1, bottom-top-2),
+                            regular_font, TABLE_FONT_PT)
         _draw_lines(pdf, cell.text, x0 + 2, page_height - top - 1,
                     max(1, x1 - x0 - 4), max(1, bottom - top - 2),
-                    TABLE_FONT_PT, regular_font, invisible=invisible)
+                    size, regular_font, invisible=invisible)
+
+
+def _draw_source_line(pdf,line,page_height,font):
+    if line.rotation in (90,270):
+        from docpipe.ir import BBox
+        b=line.bbox
+        local=line.model_copy(update={'rotation':0,'bbox':BBox(x0=0,y0=0,x1=b.y1-b.y0,y1=b.x1-b.x0)})
+        pdf.saveState()
+        if line.rotation==90:
+            pdf.translate(b.x1,page_height-b.y1)
+        else:
+            pdf.translate(b.x0,page_height-b.y0)
+        pdf.rotate(line.rotation)
+        _draw_source_line(pdf,local,b.x1-b.x0,font)
+        pdf.restoreState()
+        return
+    if line.runs:
+        for run in line.runs:
+            _draw_source_line(pdf,run,page_height,font)
+        return
+    path=font_path(line.font_family,line.bold,line.italic) if line.font_family else None
+    if path:
+        font='Docpipe-'+path.stem
+        if font not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(font,str(path)))
+    size=line.font_size_pt or max(4,(line.bbox.y1-line.bbox.y0)/.75)
+    measured=pdfmetrics.stringWidth(line.text,font,size)
+    if path:
+        from PIL import ImageFont
+        glyph=ImageFont.truetype(str(path),100).getbbox(line.text,anchor='ls')
+        measured=(glyph[2]-glyph[0])*size/100
+    baseline=line.baseline_from_top_pt if line.baseline_from_top_pt is not None else pdfmetrics.getAscent(font,size)
+    text=pdf.beginText(line.bbox.x0-line.glyph_offset_x_pt,page_height-line.bbox.y0-baseline)
+    text.setFont(font,size)
+    text.setFillColor(colors.HexColor(line.color or '#000000'))
+    if measured:
+        text.setHorizScale(line.horizontal_scale_pct or (line.bbox.x1-line.bbox.x0)/measured*100)
+    text.textOut(line.text);pdf.drawText(text)
+
+
+def _fitted_size(text, width, height, font, preferred):
+    size = min(preferred, height)
+    while size > .5:
+        lines = [line for source in (text.splitlines() or [''])
+                 for line in _wrap_line(source, width, font, size)]
+        if len(lines) * size <= height:
+            break
+        size = max(.5, size - .25)
+    return size
 
 
 def render(document: Document, out: Path, base_dir: Path | None = None) -> Path:
     """Reconstruct positioned pages from IR with stable typography and table grids."""
     out.parent.mkdir(parents=True, exist_ok=True)
+    from docpipe.renderers.fixed_layout import stable_document
+    document = stable_document(document)
     regular_font, bold_font = _register_fonts()
     base = base_dir or out.parent
     pdf = canvas.Canvas(str(out))
     for page in document.pages:
-        text_tops = collision_free_text_tops(
-            page.blocks,
-            lambda block: text_style(block.type.value),
-            font_metric_mode="dejavu",
-        )
         pdf.setPageSize((page.width_pt, page.height_pt))
         for block in sorted(page.blocks, key=lambda item: item.order):
             x = block.bbox.x0
@@ -142,14 +209,32 @@ def render(document: Document, out: Path, base_dir: Path | None = None) -> Path:
                                   preserveAspectRatio=True, anchor="sw")
                 continue
             if block.type == BlockType.TABLE and block.table:
-                _draw_table(pdf, block, page.height_pt, regular_font, top=text_tops.get(id(block)))
+                _draw_table(pdf, block, page.height_pt, regular_font)
                 continue
             if not block.text:
                 continue
             size, bold, _italic = text_style(block.type.value)
-            top = text_tops.get(id(block), block.bbox.y0)
+            if block.lines:
+                for line in block.lines:
+                    font = bold_font if bold else regular_font
+                    _draw_source_line(pdf,line,page.height_pt,font)
+                continue
+            top = block.bbox.y0
+            size = _fitted_size(block.text, width, height, bold_font if bold else regular_font, size)
             _draw_lines(pdf, block.text, x, page.height_pt - top,
                         width, height, size, bold_font if bold else regular_font)
+        from docpipe.style_review import line_review
+        for block in page.blocks:
+            lines=list(block.lines or [])
+            if block.table:
+                lines.extend(line for cell in block.table.cells for line in (cell.lines or []))
+            for line in lines:
+                reason=line_review(line)
+                if reason:
+                    box=line.bbox
+                    pdf.highlightAnnotation('Проверить оформление: '+reason,
+                        Rect=(box.x0,page.height_pt-box.y1,box.x1,page.height_pt-box.y0),
+                        Color=[1,.8,.25])
         pdf.showPage()
     pdf.save()
     return out

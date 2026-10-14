@@ -241,6 +241,143 @@
         },
         "bbox": {
           "$ref": "#/$defs/BBox"
+        },
+        "font_size_pt": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Font Size Pt"
+        },
+        "font_family": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Font Family"
+        },
+        "bold": {
+          "default": false,
+          "title": "Bold",
+          "type": "boolean"
+        },
+        "italic": {
+          "default": false,
+          "title": "Italic",
+          "type": "boolean"
+        },
+        "font_match_error": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Font Match Error"
+        },
+        "font_match_margin": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Font Match Margin"
+        },
+        "baseline_from_top_pt": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline From Top Pt"
+        },
+        "glyph_offset_x_pt": {
+          "default": 0,
+          "title": "Glyph Offset X Pt",
+          "type": "number"
+        },
+        "runs": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Line"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runs"
+        },
+        "review_required": {
+          "default": false,
+          "title": "Review Required",
+          "type": "boolean"
+        },
+        "review_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Reason"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "pattern": "^#[0-9a-fA-F]{6}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
+        "horizontal_scale_pct": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Horizontal Scale Pct"
         }
       },
       "required": [
@@ -427,6 +564,34 @@
         },
         "bbox": {
           "$ref": "#/$defs/BBox"
+        },
+        "lines": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Line"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lines"
+        },
+        "background_color": {
+          "anyOf": [
+            {
+              "pattern": "^#[0-9a-fA-F]{6}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Background Color"
         }
       },
       "required": [
@@ -471,6 +636,32 @@
           "minimum": 0,
           "title": "N Cols",
           "type": "integer"
+        },
+        "border_color": {
+          "anyOf": [
+            {
+              "pattern": "^#[0-9a-fA-F]{6}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Border Color"
+        },
+        "border_width_pt": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Border Width Pt"
         }
       },
       "title": "TableData",

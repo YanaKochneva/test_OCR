@@ -26,7 +26,8 @@ class TableLayout:
     cells: list[CellPlacement]
 
 
-def build_table_layout(block: Block) -> TableLayout:
+def build_table_layout(block: Block, *, font_size_pt: float | None = None,
+                       full_line_boxes: bool = False, preserve_geometry: bool = False) -> TableLayout:
     """Build a rectangular grid while retaining recognized spans and geometry."""
     if block.table is None:
         raise ValueError("table layout requires a table block")
@@ -101,17 +102,41 @@ def build_table_layout(block: Block) -> TableLayout:
 
     normalized_widths = normalize(widths, total_width)
     normalized_heights = normalize(heights, total_height)
+    if any(cell.lines for cell in source_cells):
+        # Pixel-verified cells contain complete rectangles rather than glyph
+        # boxes. Use their actual separator coordinates, including merged spans.
+        def edges(count, first, last, start_name, end_name, offset_name, span_name):
+            samples=[[] for _ in range(count+1)]
+            for cell in source_cells:
+                start=getattr(cell,offset_name);end=start+getattr(cell,span_name)
+                samples[start].append(getattr(cell.bbox,start_name))
+                samples[end].append(getattr(cell.bbox,end_name))
+            bounds=[median(values) if values else first+(last-first)*i/count
+                    for i,values in enumerate(samples)]
+            bounds[0],bounds[-1]=first,last
+            if any(b<=a for a,b in zip(bounds,bounds[1:])):
+                return None
+            return [b-a for a,b in zip(bounds,bounds[1:])]
+        normalized_widths=edges(cols,box.x0,box.x1,'x0','x1','col','colspan') or normalized_widths
+        normalized_heights=edges(rows,box.y0,box.y1,'y0','y1','row','rowspan') or normalized_heights
+    if preserve_geometry:
+        return TableLayout(rows, cols, normalized_widths, normalized_heights, placements)
     # Native tables may grow to fit their contents. Reserve that height in all
     # renderers so later rows and page objects cannot cover the cell text.
-    from docpipe.renderers.text_layout import estimate_text_height
+    from docpipe.renderers.text_layout import estimate_text_height, wrap_text
     from docpipe.renderers.typography import TABLE_FONT_PT
+    font_size = TABLE_FONT_PT if font_size_pt is None else font_size_pt
 
     for cell in placements:
         width = max(1.0, sum(normalized_widths[cell.col:cell.col + cell.colspan]) - 4)
         required = max(
-            estimate_text_height(cell.text, width, (TABLE_FONT_PT, False, False), mode)
+            estimate_text_height(cell.text, width, (font_size, False, False), mode)
             for mode in ("arial", "dejavu")
         ) + 4
+        if full_line_boxes:
+            required = max(required, max(
+                max(1,len(wrap_text(cell.text,width,(font_size,False,False),font_metric_mode=mode).splitlines()))
+                *font_size + 4 for mode in ('arial','dejavu')))
         available = sum(normalized_heights[cell.row:cell.row + cell.rowspan])
         if required > available:
             increment = (required - available) / cell.rowspan

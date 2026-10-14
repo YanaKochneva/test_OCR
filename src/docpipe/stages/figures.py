@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
 from PIL import Image
 
 from docpipe.config import FigureConfig
@@ -47,12 +46,15 @@ def crop_and_save(image: Image.Image, boxes: list[PixelBox], out_dir: Path, page
     result=[]
     for idx,b in enumerate(boxes,1):
         crop=image.crop((b.x0,b.y0,b.x1,b.y1))
-        arr=np.asarray(crop)
-        flat=arr.reshape(-1,arr.shape[-1]) if arr.ndim==3 else arr.reshape(-1,1)
-        colors=len(np.unique(flat,axis=0)) if len(flat) else 999
-        if colors <= 256:
-            ext="png"; path=out_dir/f"p{page_no:03d}_fig{idx:02d}.png"; crop.save(path,format="PNG",optimize=True)
-        else:
-            ext="jpg"; path=out_dir/f"p{page_no:03d}_fig{idx:02d}.jpg"; crop.save(path,format="JPEG",quality=90)
+        try:
+            # Bounded palette counting avoids sorting every pixel of a large figure.
+            if crop.getcolors(maxcolors=256) is not None:
+                path=out_dir/f"p{page_no:03d}_fig{idx:02d}.png"
+                crop.save(path,format='PNG',optimize=True)
+            else:
+                path=out_dir/f"p{page_no:03d}_fig{idx:02d}.jpg"
+                crop.save(path,format='JPEG',quality=90)
+        finally:
+            crop.close()
         result.append((b,path))
     return result

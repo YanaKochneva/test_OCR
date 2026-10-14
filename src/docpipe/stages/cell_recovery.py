@@ -22,6 +22,8 @@ def accepts_cell_candidate(original, candidate):
         return False
     if not original.strip():
         return True
+    if not preserves_cell_values(original, candidate):
+        return False
     # Border remnants often become high-confidence trailing underscores.
     # They add no lexical evidence to an already populated cell. Do not reject
     # ordinary punctuation corrections (e.g. restoring a sentence's period).
@@ -45,6 +47,13 @@ def accepts_cell_candidate(original, candidate):
     # Retain the existing token-deletion guard used by table reconciliation.
     return (similarity >= .7 and len(candidate) >= len(original)*.9
             and preserves_existing_words(original,candidate))
+
+
+def preserves_cell_values(original, candidate):
+    """Even a corroborated reread may not delete numbers or formula signs."""
+    tokens = lambda text: re.findall(r'\d+(?:[.,]\d+)*|[<>≤≥±=+*/%()\[\]_-]', text)
+    iterator = iter(tokens(candidate))
+    return all(any(value == item for item in iterator) for value in tokens(original))
 
 
 def is_text_extension(original: str, candidate: str) -> bool:

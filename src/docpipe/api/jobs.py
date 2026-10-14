@@ -16,7 +16,6 @@ from docpipe.config import AppConfig
 from docpipe.engines import create_engine
 from docpipe.engines.base import LayoutOcrEngine
 from docpipe.ir import Document
-from docpipe.io.normalize import normalize_input
 from docpipe.pipeline import parse
 from docpipe.quality import document_metrics, recognized_text_chars
 from docpipe.renderers import (
@@ -54,6 +53,7 @@ class Job:
     result_zip: Path | None = None
     document_json: Path | None = None
     cancel_requested: bool = False
+    review_required: bool = False
 
 
 class JobManager:
@@ -258,6 +258,8 @@ class JobManager:
                     f"Движок {job.engine} не вернул текст. {detail}"
                 )
             self._render_outputs(doc, job, out)
+            from docpipe.style_review import write_style_review
+            job.review_required=write_style_review(doc,out)['review_required']
             verification = verify_document(out)
             (out / "verification.json").write_text(
                 json.dumps(verification, ensure_ascii=False, indent=2) + "\n",
@@ -306,7 +308,7 @@ class JobManager:
         job.progress = int(current * 100 / total) if total else 0
 
     def _render_outputs(self, doc, job: Job, out: Path) -> None:
-        outputs = set(job.outputs) | {"md", "html", "pdf-flow", "pdf-searchable"}
+        outputs = set(job.outputs) | {"md", "html", "pdf-flow", "pdf-positional", "docx"}
         if "md" in outputs:
             render_markdown(doc, out / "document.md")
         if "html" in outputs:
@@ -314,12 +316,7 @@ class JobManager:
         if "pdf-flow" in outputs:
             render_pdf_flow(doc, out / "document-flow.pdf", out)
         if "pdf-searchable" in outputs:
-            normalized = normalize_input(job.input_path, self.config)
-            try:
-                render_pdf_searchable(doc, normalized, out / "document-searchable.pdf")
-            finally:
-                if normalized != job.input_path:
-                    normalized.unlink(missing_ok=True)
+            render_pdf_searchable(doc, job.input_path, out / "document-searchable.pdf")
         if "pdf-positional" in outputs:
             render_pdf_positional(doc, out / "document-positional.pdf", out)
         if "docx" in outputs:
@@ -331,6 +328,7 @@ class JobManager:
             "status": job.status,
             "progress": job.progress,
             "pages_total": job.pages_total,
+            "review_required": job.review_required,
             "error": job.error,
             "created_at": job.created_at,
             "started_at": job.started_at,

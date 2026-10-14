@@ -25,9 +25,9 @@
         <div><div class="upload-icon" aria-hidden="true">↑</div><strong>Перетащите файл сюда</strong><p>PDF или изображение: PNG, JPG, TIFF, BMP, WEBP</p><button class="link-button" type="button" id="browse">Выбрать файл</button><input id="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,application/pdf,image/*" hidden></div>
       </div>
       <div class="file-name" id="file-name"></div>
-      <div class="field"><label class="field-label" for="engine">Движок распознавания</label><select id="engine" class="text-input"><option value="docling">Docling — PP-OCRv5</option><option value="docling_glm">Docling + проверка GLM</option><option value="glm_ocr">GLM-OCR — VLM (требуется сервер модели)</option></select></div>
+      <div class="field"><label class="field-label" for="engine">Движок распознавания</label><select id="engine" class="text-input"><option value="docling">Docling — PP-OCRv6 Medium RU</option><option value="docling_glm">Docling + проверка GLM</option><option value="glm_ocr">GLM-OCR — VLM (требуется сервер модели)</option></select></div>
       <div class="field"><span class="field-label">Что подготовить</span><div class="formats">
-        <label class="format"><input type="checkbox" name="output" value="pdf-searchable" checked disabled><span><b>PDF с текстом</b><small>Обязательный результат</small></span></label>
+        <label class="format"><input type="checkbox" name="output" value="pdf-positional" checked disabled><span><b>Восстановленный PDF</b><small>Обязательный результат</small></span></label>
         <label class="format"><input type="checkbox" name="output" value="docx" checked><span><b>Word</b><small>Редактируемый DOCX</small></span></label>
         <label class="format"><input type="checkbox" name="output" value="md" checked disabled><span><b>Markdown</b><small>Обязательный результат</small></span></label>
         <label class="format"><input type="checkbox" name="output" value="html" checked disabled><span><b>HTML</b><small>Обязательный результат</small></span></label>
@@ -103,12 +103,12 @@
         if (job.status === 'queued') title.textContent = 'Документ в очереди';
       } while (job.status === 'queued' || job.status === 'running');
       if (job.status !== 'completed') throw new Error(job.error || 'Не удалось обработать документ.');
-      title.textContent = 'Документ готов'; detail.textContent = `${job.pages_total || 'Все'} страниц обработано`;
+      title.textContent = job.review_required ? 'Предварительный документ готов' : 'Документ готов'; detail.textContent = `${job.pages_total || 'Все'} страниц обработано`;
       const result = await request(`/v1/jobs/${encodeURIComponent(created.job_id)}/result`);
       const blob = await result.blob();
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `docpipe-${created.job_id}.zip`; link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 30000);
-      message.className = 'message success'; message.textContent = 'Результат скачан архивом. Внутри — выбранные форматы и распознанный текст.';
+      message.className = 'message success'; message.textContent = job.review_required ? 'Предварительный результат скачан. Проверьте отмеченные фрагменты в PDF и комментарии в DOCX; список находится в style-review.json.' : 'Результат скачан архивом. Внутри — выбранные форматы и распознанный текст.';
     } catch (error) {
       showError(error.message || 'Не удалось связаться с сервисом. Проверьте подключение.');
     } finally { submit.disabled = false; }

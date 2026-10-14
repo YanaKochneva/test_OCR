@@ -106,6 +106,8 @@ def compare_text(reference: str, ir: str) -> dict[str, Any]:
     strict_actual = re.sub(r"\s+", " ", unicodedata.normalize("NFC", ir)).strip()
     strict_words = strict_reference.split()
     strict_hypothesis = strict_actual.split()
+    character_errors = alignment(reference_normalized, actual_normalized)
+    word_errors = alignment(reference_words, actual_words)
 
     return {
         "metric": "case-insensitive; normalizes ё/е and whitespace; CER/WER include text order",
@@ -119,8 +121,17 @@ def compare_text(reference: str, ir: str) -> dict[str, Any]:
         "f1": f1,
         "cer": cer,
         "wer": wer,
-        "character_errors": alignment(reference_normalized, actual_normalized),
-        "word_errors": alignment(reference_words, actual_words),
+        "character_errors": character_errors,
+        "word_errors": word_errors,
+        "reference_scoped_cer": (character_errors["substitutions"] + character_errors["deletions"])
+        / len(reference_normalized),
+        "reference_scoped_wer": (word_errors["substitutions"] + word_errors["deletions"])
+        / max(1, len(reference_words)),
+        "excluded_inserted_chars": character_errors["insertions"],
+        "excluded_inserted_words": word_errors["insertions"],
+        "reference_scope_policy": "Reference-assisted Levenshtein alignment; insertion operations "
+        "are excluded from scoped scores only. Standard CER/WER and OCR artifacts are unchanged. "
+        "This does not establish whether inserted text is a hallucination or visible source content.",
         "strict_cer": Levenshtein.distance(strict_reference, strict_actual) / len(strict_reference),
         "strict_wer": Levenshtein.distance(strict_words, strict_hypothesis) / len(strict_words),
         "document_exact_match": strict_reference == strict_actual,

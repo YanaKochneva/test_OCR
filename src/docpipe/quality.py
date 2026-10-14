@@ -16,6 +16,8 @@ def recognized_text_chars(doc: Document) -> int:
 
 
 def document_metrics(doc: Document) -> dict:
+    from docpipe.style_review import review_items
+    pending=review_items(doc)
     block_counts = Counter(
         block.type.value for page in doc.pages for block in page.blocks
     )
@@ -31,6 +33,8 @@ def document_metrics(doc: Document) -> dict:
         "tables": block_counts.get(BlockType.TABLE.value, 0),
         "figures": block_counts.get(BlockType.FIGURE.value, 0),
         "parse_seconds": doc.timings.get("parse_total"),
+        "review_required": bool(pending),
+        "typography_review_fragments": len(pending),
         "cer": None,
         "wer": None,
         "accuracy_note": "CER/WER require a ground-truth transcript; use docpipe eval with a labeled DOCX reference.",

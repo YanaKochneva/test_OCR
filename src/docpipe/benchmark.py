@@ -81,7 +81,8 @@ def score_structure(reference: Path, ir: dict[str, Any], output: Path) -> dict[s
     matched = sum(a == b for a, b in zip(signatures, detected))
     return {
         "reference_tables": len(signatures), "ocr_tables": len(detected),
-        "output_native_tables": len(actual.tables),
+        # Native tables may belong to a positioned editable Word text frame.
+        "output_native_tables": len(actual.element.body.xpath('.//w:tbl')),
         "table_dimensions_accuracy": matched / max(len(signatures), len(detected))
         if signatures or detected else None,
         "reference_table_dimensions": signatures, "ocr_table_dimensions": detected,
@@ -161,6 +162,10 @@ def run_benchmark(root: Path, out: Path, *, engine: str = "docling",
         "scored_cases": len(scored),
         "macro_cer": sum(s["cer"] for s in scored) / len(scored) if scored else None,
         "macro_wer": sum(s["wer"] for s in scored) / len(scored) if scored else None,
+        "macro_reference_scoped_cer": sum(s["reference_scoped_cer"] for s in scored) / len(scored)
+        if scored else None,
+        "macro_reference_scoped_wer": sum(s["reference_scoped_wer"] for s in scored) / len(scored)
+        if scored else None,
         "worst_document_cer": max((s["cer"] for s in scored), default=None),
         "document_exact_match_rate": sum(s["document_exact_match"] for s in scored) / len(scored)
         if scored else None,
@@ -181,7 +186,8 @@ def _write_report(out: Path, report: dict[str, Any]) -> None:
     temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(out / "report.json")
     with (out / "summary.csv").open("w", encoding="utf-8-sig", newline="") as stream:
-        fields = ["case", "status", "cer", "wer", "strict_cer", "strict_wer", "f1",
+        fields = ["case", "status", "cer", "wer", "reference_scoped_cer", "reference_scoped_wer",
+                  "excluded_inserted_chars", "excluded_inserted_words", "strict_cer", "strict_wer", "f1",
                   "document_exact_match", "elapsed_seconds", "error"]
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()

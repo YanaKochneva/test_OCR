@@ -48,6 +48,8 @@ def _check(name: str, status: str, detail: str) -> dict:
 
 def _verify_docx(doc: Document, out_dir: Path, checks: list[dict]) -> None:
     """Check page anchoring and native-table frame budgets, not visual fidelity."""
+    from docpipe.renderers.page_size import a4_document
+    doc = a4_document(doc)
     path=out_dir/'document.docx'
     if not path.is_file():
         checks.append(_check('docx_structure','FAIL','document.docx is missing'))
@@ -93,7 +95,10 @@ def _verify_docx(doc: Document, out_dir: Path, checks: list[dict]) -> None:
                         bottom=table.find('w:tblPr/w:tblBorders/w:bottom',ns)
                         borders=sum(float(e.get('{'+ns['w']+'}sz','0'))/8
                                     for e in (top,bottom) if e is not None)
-                        required=sum(float(h.get('{'+ns['w']+'}val'))/20 for h in heights)+len(rows)*borders+1
+                        # Adjacent rows share a horizontal border; count one
+                        # thickness per row, matching the rendered grid pitch.
+                        shared_border=borders/2
+                        required=sum(float(h.get('{'+ns['w']+'}val'))/20 for h in heights)+len(rows)*shared_border+1
                         if required>height+.1:errors.append('native table exceeds frame height budget')
             if len(ids)!=len(set(ids)):errors.append('duplicate drawing object identifiers')
             tables=root.findall('.//w:tbl',ns)

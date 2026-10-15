@@ -488,7 +488,7 @@ class DoclingEngine(LayoutOcrEngine):
             def word_reader(word_image,**kwargs):
                 primary=self._refinement_reader(word_image,**kwargs)
                 from docpipe.stages.word_refinement import is_mixed_word, select_word_result
-                recheck = os.getenv('DOCPIPE_OCR_LATIN_RECHECK','0') == '1'
+                recheck = os.getenv('DOCPIPE_OCR_LATIN_RECHECK','1') == '1'
                 if primary.txts and float(primary.scores[0])>=.95 and not (recheck and is_mixed_word(primary.txts[0])):
                     return primary
                 if self._latin_reader is None:

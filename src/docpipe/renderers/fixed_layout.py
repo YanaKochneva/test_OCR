@@ -17,11 +17,20 @@ def stable_document(document):
             size,bold,italic=8,False,False
         result=[]
         for line in items or []:
+            from PIL import ImageFont
+            from docpipe.renderers.fonts import font_path,require_font
+            font=ImageFont.truetype(str(font_path(FONT_FAMILY,bold,italic) or require_font()),100)
+            box=line.bbox
+            available_width=box.y1-box.y0 if line.rotation in (90,270) else box.x1-box.x0
+            available_height=box.x1-box.x0 if line.rotation in (90,270) else box.y1-box.y0
+            measured=font.getlength(line.text)
+            height_factor=1.05 if role in ('table','table_header') else 1.35
+            fitted=min(size,max(5,available_height*height_factor),available_width*100/measured if measured else size)
             # Optical font ambiguity is irrelevant to an explicitly fixed style.
             optical=line.font_match_error is not None
             result.append(line.model_copy(update={
-                'font_family':FONT_FAMILY,'font_size_pt':size,'bold':bold,'italic':italic,
-                'runs':None,'horizontal_scale_pct':100,'glyph_offset_x_pt':0,
+                'font_family':FONT_FAMILY,'font_size_pt':max(4,fitted),'bold':bold,'italic':italic,
+                'runs':normalize(line.runs,role),'horizontal_scale_pct':100,'glyph_offset_x_pt':0,
                 'baseline_from_top_pt':None,'font_match_error':None,'font_match_margin':None,
                 'review_required':False if optical else line.review_required,
                 'review_reason':None if optical else line.review_reason}))

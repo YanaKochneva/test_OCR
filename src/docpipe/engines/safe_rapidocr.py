@@ -136,4 +136,7 @@ class RecognitionSafeReader:
 def RapidOCR(*args, **kwargs):
     """Factory compatible with the project's existing RapidOCR constructors."""
     from rapidocr import RapidOCR as Backend
+    params=kwargs.setdefault('params',{})
+    params.setdefault('EngineConfig.onnxruntime.intra_op_num_threads',int(os.getenv('DOCPIPE_OCR_THREADS','4')))
+    params.setdefault('EngineConfig.onnxruntime.inter_op_num_threads',1)
     return RecognitionSafeReader(Backend(*args, **kwargs))

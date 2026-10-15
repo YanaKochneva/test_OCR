@@ -106,6 +106,13 @@ def restore_table_visual_layout(blocks,image,meta,line_reader=None):
                     bands[-1][1]=int(y)
                 else:
                     bands.append([int(y),int(y)])
+            joined=[]
+            for start,end in bands:
+                if joined and start-joined[-1][1]<=max(3,round(max(end-start+1,joined[-1][1]-joined[-1][0]+1)*.18)):
+                    joined[-1][1]=end
+                else:
+                    joined.append([start,end])
+            bands=joined
             line_boxes=[]
             line_weights=[]
             for start,end in bands:

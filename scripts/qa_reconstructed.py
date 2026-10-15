@@ -33,7 +33,7 @@ def qa(report_path):
                     page=actual[index]
                     result=page.render(scale=1).to_pil().convert('RGB')
                     if index<len(source):
-                        original=source[index].render(scale=1).to_pil().convert('RGB')
+                        original=source[index].render(scale=result.width/source[index].get_width()).to_pil().convert('RGB')
                         contact=Image.new('RGB',(original.width+result.width,max(original.height,result.height)+25),'#eeeeee')
                         contact.paste(original,(0,25));contact.paste(result,(original.width,25))
                         ImageDraw.Draw(contact).text((8,5),f'{case["case"]} page {index+1}: SCAN | RECONSTRUCTED',fill='black')

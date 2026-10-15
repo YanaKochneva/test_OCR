@@ -4,7 +4,7 @@ from docpipe.ir import Block, BlockType
 
 
 def attach_captions(blocks: list[Block], max_gap: float = 48.0) -> list[Block]:
-    figs=[b for b in blocks if b.type==BlockType.FIGURE]
+    figs=[b for b in blocks if b.type==BlockType.FIGURE and b.source_label!='graphic_field']
     updates={}
     for cap in [b for b in blocks if b.type==BlockType.CAPTION]:
         candidates=[]

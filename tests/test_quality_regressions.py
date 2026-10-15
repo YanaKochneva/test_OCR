@@ -1,3 +1,4 @@
+import pytest
 from docpipe.evaluation import compare_text
 from docpipe.ir import BBox, Block, BlockType
 from docpipe.stages.text_duplicates import remove_text_duplicates
@@ -102,7 +103,9 @@ def test_docx_objects_stay_at_ir_coordinates(tmp_path):
     with ZipFile(path) as archive:
         root=ET.fromstring(archive.read('word/document.xml'))
     anchors=root.findall('.//wp:anchor',ns)
-    assert [int(a.find('wp:positionV/wp:posOffset',ns).text)/12700 for a in anchors]==[100,135]
+    from docpipe.renderers.page_size import A4_HEIGHT
+    actual=[int(a.find('wp:positionV/wp:posOffset',ns).text)/12700 for a in anchors]
+    assert actual==pytest.approx([100*A4_HEIGHT/800,135*A4_HEIGHT/800],abs=.001)
 
 
 def test_visual_line_partition_preserves_recognized_words():

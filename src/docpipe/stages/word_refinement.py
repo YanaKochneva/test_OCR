@@ -13,11 +13,13 @@ def select_word_result(primary, alternative):
     if (primary.txts and alternative.txts and is_mixed_word(primary.txts[0])
             and float(alternative.scores[0]) >= .98):
         before, after = primary.txts[0].strip(), alternative.txts[0].strip()
-        if (re.fullmatch(r'[A-Za-z]{4,}[.,;:!?]?', after)
+        visual=lambda value:value.translate(str.maketrans('АВЕКМНОРСТХУаекорсух','ABEKMHOPCTXYaekopcyx')).casefold()
+        if (re.fullmatch(r'[A-Za-z0-9_./\\-]+[.,;:!?]?', after)
+                and len(re.findall('[A-Za-z]',after))>=4
                 and abs(len(before)-len(after)) <= 2
-                and Levenshtein.normalized_similarity(before.casefold(),after.casefold()) >= .4):
+                and Levenshtein.normalized_similarity(visual(before),visual(after)) >= .4):
             return alternative
-    return alternative if alternative.txts and (not primary.txts or alternative.scores[0]>primary.scores[0]) else primary
+    return alternative if alternative.txts and not primary.txts else primary
 
 
 def recognize_separated_words(image, reader):
@@ -47,7 +49,7 @@ def refine_mixed_words(image, text, reader):
     suspicious=lambda word:bool(
         (re.search('[A-Za-z]',word) and re.search('[А-Яа-яЁё]',word))
     )
-    if '\\' in text or not any(suspicious(w) for w in words):return text
+    if not any(suspicious(w) for w in words):return text
     mask=np.asarray(image.convert('L'))<170
     mask[:,mask.sum(axis=0)>image.height*.9]=False
     rows=np.flatnonzero(mask.sum(axis=1)>2)

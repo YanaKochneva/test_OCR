@@ -287,7 +287,7 @@ def _append_line_runs(paragraph,line,fallback_size):
                                             author='DocPipe',initials='OCR')
 
 
-def _format_table_cell(cell, text: str, font_size: float = TABLE_FONT_PT, source=None) -> None:
+def _format_table_cell(cell, text: str, font_size: float = TABLE_FONT_PT, source=None, content_height=None) -> None:
     cell.text = text
     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
     cell_properties = cell._tc.get_or_add_tcPr()
@@ -302,9 +302,17 @@ def _format_table_cell(cell, text: str, font_size: float = TABLE_FONT_PT, source
     shading.set(qn("w:fill"), (source.background_color or '#FFFFFF')[1:] if source else 'FFFFFF')
     if source and source.lines:
         cell.text=''
+        first_size=source.lines[0].font_size_pt or font_size
+        first_offset=max(0,source.lines[0].bbox.y0-source.bbox.y0-1-first_size*.2)
         for index,line in enumerate(source.lines):
             paragraph=cell.paragraphs[0] if index==0 else cell.add_paragraph()
             size=line.font_size_pt or font_size
+            if content_height is not None and index==len(source.lines)-1:
+                remaining=content_height-first_offset-(line.bbox.y0-source.lines[0].bbox.y0)
+                size=min(size,max(4,remaining))
+                line=line.model_copy(update={'font_size_pt':size,'runs':[
+                    run.model_copy(update={'font_size_pt':min(run.font_size_pt or size,size)})
+                    for run in line.runs] if line.runs else None})
             paragraph.paragraph_format.space_before=Pt(max(0,line.bbox.y0-source.bbox.y0-1-size*.2) if index==0 else 0)
             paragraph.paragraph_format.space_after=Pt(0)
             paragraph.paragraph_format.left_indent=Pt(max(0,line.bbox.x0-source.bbox.x0-2))
@@ -372,9 +380,8 @@ def _add_table(doc: WordDocument, block: Block, top: float | None = None, page_i
             row.cells[col_index].width = Pt(width)
     for row_index, height in enumerate(layout.row_heights):
         row = table.rows[row_index]
-        # Native row layout includes both horizontal cell borders. Compensate
-        # for their thickness instead of accumulating 1pt drift per source row.
-        row.height = Pt(max(1,height-2*border_pt))
+        # Shared horizontal borders add one border thickness to the grid pitch.
+        row.height = Pt(max(1,height-border_pt))
         # Word must not enlarge a measured row and clip later rows in its frame.
         # Layout reserved complete line boxes and cell padding before this point.
         row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
@@ -393,7 +400,8 @@ def _add_table(doc: WordDocument, block: Block, top: float | None = None, page_i
             )
             cell = cell.merge(last)
         source=next((c for c in block.table.cells if (c.row,c.col)==(placement.row,placement.col)),None)
-        _format_table_cell(cell, placement.text, font_size, source)
+        content_height=sum(layout.row_heights[placement.row:placement.row+placement.rowspan])-border_pt*placement.rowspan-2
+        _format_table_cell(cell, placement.text, font_size, source, content_height)
     _add_textbox(doc,shape_id=f'docpipe-table-{page_index}-{block.order}',
         x=block.bbox.x0,y=block.bbox.y0 if top is None else top,
         width=block.bbox.x1-block.bbox.x0,
@@ -496,7 +504,8 @@ def render(document: Document, out: Path, base_dir: Path | None = None) -> Path:
     """Create a page-faithful DOCX with objects anchored at their IR coordinates."""
     out.parent.mkdir(parents=True, exist_ok=True)
     from docpipe.renderers.fixed_layout import stable_document
-    document = stable_document(document)
+    from docpipe.renderers.page_size import a4_document
+    document = stable_document(a4_document(document))
     base = base_dir or out.parent
     doc = WordDocument()
     doc.styles["Normal"].font.name = FONT_FAMILY

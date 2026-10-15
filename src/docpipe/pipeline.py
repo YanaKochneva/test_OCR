@@ -88,6 +88,8 @@ def _process_page(page, index, layer, engine, config, out_dir):
             meta = PageMeta(index, raster.width_pt, raster.height_pt, raster.rotation, raster.dpi)
             engine.refinement_incomplete = False
             blocks = engine.analyze_page(raster.image, meta)
+            from docpipe.stages.list_markers import restore_list_markers
+            blocks = restore_list_markers(blocks, raster.image, meta)
             from docpipe.stages.table_visual_layout import restore_table_visual_layout
             reader_factory=getattr(engine,'_get_refinement_reader',None)
             blocks = restore_table_visual_layout(blocks, raster.image, meta,
@@ -95,6 +97,8 @@ def _process_page(page, index, layer, engine, config, out_dir):
             if config.render.formatting_reference:
                 from docpipe.stages.format_standard import apply_standard, extract_standard
                 blocks = apply_standard(blocks, extract_standard(config.render.formatting_reference))
+            from docpipe.stages.graphic_fields import retain_graphic_fields
+            blocks = retain_graphic_fields(blocks, raster.image, meta)
             blocks = _save_figures(blocks, raster, out_dir, index)
             if engine.name not in {'paddleocr_vl', 'ppstructure', 'glm_ocr'}:
                 blocks = assign_order(blocks, raster.width_pt)

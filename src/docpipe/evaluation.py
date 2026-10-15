@@ -23,6 +23,16 @@ def _normalized_text(text: str) -> str:
     return re.sub(r"\s+", " ", text.casefold().replace("ё", "е")).strip()
 
 
+def _without_graphic_fields(text: str) -> tuple[str, int]:
+    """Standalone blank-field underscores are graphics; identifiers remain text."""
+    count = 0
+    def remove(match):
+        nonlocal count
+        count += len(match.group())
+        return ""
+    return re.sub(r"(?<!\w)_{2,}(?=\W|$|\d{4}\b)", remove, text), count
+
+
 def _reference_text(path: Path) -> str:
     reference = WordDocument(path)
     parts: list[str] = []
@@ -108,6 +118,15 @@ def compare_text(reference: str, ir: str) -> dict[str, Any]:
     strict_hypothesis = strict_actual.split()
     character_errors = alignment(reference_normalized, actual_normalized)
     word_errors = alignment(reference_words, actual_words)
+    scoped_reference, reference_graphics = _without_graphic_fields(reference)
+    scoped_actual, actual_graphics = _without_graphic_fields(ir)
+    scoped_reference = _normalized_text(scoped_reference)
+    scoped_actual = _normalized_text(scoped_actual)
+    if not scoped_reference:
+        raise ValueError("Reference contains no usable text after excluding graphic fields")
+    scoped_words = _tokens(scoped_reference)
+    scoped_character_errors = alignment(scoped_reference, scoped_actual)
+    scoped_word_errors = alignment(scoped_words, _tokens(scoped_actual))
 
     return {
         "metric": "case-insensitive; normalizes ё/е and whitespace; CER/WER include text order",
@@ -123,14 +142,19 @@ def compare_text(reference: str, ir: str) -> dict[str, Any]:
         "wer": wer,
         "character_errors": character_errors,
         "word_errors": word_errors,
-        "reference_scoped_cer": (character_errors["substitutions"] + character_errors["deletions"])
-        / len(reference_normalized),
-        "reference_scoped_wer": (word_errors["substitutions"] + word_errors["deletions"])
-        / max(1, len(reference_words)),
-        "excluded_inserted_chars": character_errors["insertions"],
-        "excluded_inserted_words": word_errors["insertions"],
+        "scope_reference_chars": len(scoped_reference),
+        "scope_character_errors": scoped_character_errors,
+        "excluded_graphic_placeholder_chars_reference": reference_graphics,
+        "excluded_graphic_placeholder_chars_hypothesis": actual_graphics,
+        "reference_scoped_cer": (scoped_character_errors["substitutions"] + scoped_character_errors["deletions"])
+        / len(scoped_reference),
+        "reference_scoped_wer": (scoped_word_errors["substitutions"] + scoped_word_errors["deletions"])
+        / max(1, len(scoped_words)),
+        "excluded_inserted_chars": scoped_character_errors["insertions"],
+        "excluded_inserted_words": scoped_word_errors["insertions"],
         "reference_scope_policy": "Reference-assisted Levenshtein alignment; insertion operations "
-        "are excluded from scoped scores only. Standard CER/WER and OCR artifacts are unchanged. "
+        "and standalone blank-field underscore runs are excluded from scoped scores only. "
+        "Identifier underscores remain text. Standard CER/WER and OCR artifacts are unchanged. "
         "This does not establish whether inserted text is a hallucination or visible source content.",
         "strict_cer": Levenshtein.distance(strict_reference, strict_actual) / len(strict_reference),
         "strict_wer": Levenshtein.distance(strict_words, strict_hypothesis) / len(strict_words),

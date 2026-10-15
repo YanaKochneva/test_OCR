@@ -191,7 +191,8 @@ def render(document: Document, out: Path, base_dir: Path | None = None) -> Path:
     """Reconstruct positioned pages from IR with stable typography and table grids."""
     out.parent.mkdir(parents=True, exist_ok=True)
     from docpipe.renderers.fixed_layout import stable_document
-    document = stable_document(document)
+    from docpipe.renderers.page_size import a4_document
+    document = stable_document(a4_document(document))
     regular_font, bold_font = _register_fonts()
     base = base_dir or out.parent
     pdf = canvas.Canvas(str(out))

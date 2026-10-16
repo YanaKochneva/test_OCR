@@ -49,10 +49,6 @@ class DoclingEngine(LayoutOcrEngine):
         self._cyrillic_reader = None
         self._latin_reader = None
         self._short_value_reader = None
-        self.glm_review = False
-        self._glm_reviewer = None
-        self._glm_line_reviewer = None
-        self._glm_line_failed = False
 
     def load(self) -> None:
         try:
@@ -286,24 +282,6 @@ class DoclingEngine(LayoutOcrEngine):
                     from docpipe.stages.table_reconciliation import reconcile_table_lines
                     blocks = reconcile_table_lines(blocks, raw_lines)
 
-            if self.glm_review:
-                from docpipe.engines.glm_crop_reader import GlmCropReader
-                from docpipe.stages.glm_review import review_blocks
-                if self._glm_reviewer is None:
-                    self._glm_reviewer = GlmCropReader()
-                    self._glm_reviewer.load()
-                blocks, events = review_blocks(
-                    blocks, image, page_meta, self._glm_reviewer,
-                    self._get_refinement_reader(), max_requests=2)
-                for event in events:
-                    if event.get('error'):
-                        self.warnings.append(f"GLM review page {page_meta.index+1}: {event['error']}")
-                        if event['error'] != 'GLM crop output truncated':
-                            self.glm_review = False
-                if events:
-                    accepted = sum(event['accepted'] and event.get('candidate') != ' '.join(event['original'].split()) for event in events)
-                    self.warnings.append(f'GLM review page {page_meta.index+1}: requests={len(events)}, corrections={accepted}; details in application log')
-
             from docpipe.stages.text_duplicates import remove_text_duplicates
             blocks = remove_text_duplicates(blocks)
             return [
@@ -358,7 +336,7 @@ class DoclingEngine(LayoutOcrEngine):
         return self._refinement_reader
 
     def prepare_raster(self, raster):
-        if os.getenv('DOCPIPE_OCR_ORIENTATION', '0') == '0':
+        if os.getenv('DOCPIPE_OCR_ORIENTATION', '1') == '0':
             return raster
         from docpipe.stages.orientation import correct_orientation
         corrected = correct_orientation(raster, self._get_refinement_reader)
@@ -449,23 +427,6 @@ class DoclingEngine(LayoutOcrEngine):
                         'OCR candidates disagree: page=%s y=%s confidence=%.3f; primary retained',
                         meta.index+1,top,score)
             from docpipe.stages.word_refinement import refine_mixed_words
-            glm_corroborated=False
-            if (getattr(self,'_has_measured_cell_crop',False) and text and .65<=score<.85
-                    and os.getenv('DOCPIPE_OCR_GLM_LINE_CONFIRMATION','0')=='1'
-                    and not self._glm_line_failed and getattr(self,'_glm_line_attempts',0)<20):
-                self._glm_line_attempts=getattr(self,'_glm_line_attempts',0)+1
-                try:
-                    if self._glm_line_reviewer is None:
-                        from docpipe.engines.glm_crop_reader import GlmCropReader
-                        self._glm_line_reviewer=GlmCropReader()
-                        self._glm_line_reviewer.timeout=30
-                        self._glm_line_reviewer.load()
-                    alternative=self._glm_line_reviewer.read_single_line(crop)
-                    from docpipe.stages.line_confirmation import same_visible_line
-                    glm_corroborated=same_visible_line(text,alternative)
-                except ModelError as exc:
-                    self.warnings.append(f'GLM line confirmation unavailable: {exc}')
-                    self._glm_line_failed=True
             alternate_corroborated=False
             if (getattr(self,'_inside_table_cell',False) and score<.85
                     and self.languages[0] in {'cyrillic','eslav'}
@@ -525,7 +486,7 @@ class DoclingEngine(LayoutOcrEngine):
             if (getattr(self,'_has_measured_cell_crop',False)
                     and os.getenv('DOCPIPE_OCR_MEASURED_CELL_RECOVERY','0')=='1'):
                 minimum=.75
-            corroborated = alternate_corroborated or glm_corroborated
+            corroborated = alternate_corroborated
             if (text and .55 <= score < minimum and len(text.split()) <= 3
                     and getattr(self, '_inside_table_cell', False)
                     and os.getenv('DOCPIPE_OCR_SHORT_VALUE_CONSENSUS', '1') == '1'):
@@ -568,7 +529,6 @@ class DoclingEngine(LayoutOcrEngine):
         result=[]
         detection_retries = 0
         self._alternate_line_attempts = 0
-        self._glm_line_attempts = 0
         sx,sy=image.width/meta.width_pt,image.height/meta.height_pt
         for block in blocks:
             if block.table is None:

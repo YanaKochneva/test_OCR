@@ -307,12 +307,6 @@ def _format_table_cell(cell, text: str, font_size: float = TABLE_FONT_PT, source
         for index,line in enumerate(source.lines):
             paragraph=cell.paragraphs[0] if index==0 else cell.add_paragraph()
             size=line.font_size_pt or font_size
-            if content_height is not None and index==len(source.lines)-1:
-                remaining=content_height-first_offset-(line.bbox.y0-source.lines[0].bbox.y0)
-                size=min(size,max(4,remaining))
-                line=line.model_copy(update={'font_size_pt':size,'runs':[
-                    run.model_copy(update={'font_size_pt':min(run.font_size_pt or size,size)})
-                    for run in line.runs] if line.runs else None})
             paragraph.paragraph_format.space_before=Pt(max(0,line.bbox.y0-source.bbox.y0-1-size*.2) if index==0 else 0)
             paragraph.paragraph_format.space_after=Pt(0)
             paragraph.paragraph_format.left_indent=Pt(max(0,line.bbox.x0-source.bbox.x0-2))

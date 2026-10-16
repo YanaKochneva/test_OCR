@@ -42,6 +42,18 @@ class RenderConfig(BaseModel):
     headers_footers: Literal["keep", "drop"] = "keep"
     positional: bool = False
     formatting_reference: Path | None = None
+    correct_page_orientation: bool = True
+
+
+class ReviewConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    company_domains: list[str] = ["polyus.com"]
+    llm_enabled: bool = False
+    provider: Literal['aitunnel'] = 'aitunnel'
+    api_model: str = 'gpt-4.1-mini'
+    timeout_seconds: int = Field(default=45, ge=1, le=300)
+    max_calls: int = Field(default=100, ge=2, le=200)
+    batch_chars: int = Field(default=800, ge=200, le=12000)
 
 
 class ApiConfig(BaseModel):
@@ -52,7 +64,9 @@ class ApiConfig(BaseModel):
     result_ttl_seconds: int = Field(default=3600, ge=60)
     work_dir: Path = Path("data/jobs")
     default_engine: str = "docling"
-    sync_max_pages: int = Field(default=10, ge=1)
+    max_batch_files: int = Field(default=16, ge=1, le=100)
+    max_batch_mb: int = Field(default=200, ge=1)
+    sync_max_pages: int = Field(default=300, ge=1)
     sync_timeout_seconds: int = Field(default=600, ge=1)
     shutdown_timeout_seconds: int = Field(default=300, ge=1)
     require_api_key: bool = False
@@ -70,6 +84,7 @@ class AppConfig(BaseSettings):
     text_layer: TextLayerConfig = TextLayerConfig()
     figures: FigureConfig = FigureConfig()
     render: RenderConfig = RenderConfig()
+    review: ReviewConfig = ReviewConfig()
     debug: bool = False
     api: ApiConfig = ApiConfig()
 

@@ -67,4 +67,5 @@ def stable_document(document):
                     for cell in block.table.cells]})
             blocks.append(block.model_copy(update=update))
         pages.append(page.model_copy(update={'blocks':blocks}))
-    return document.model_copy(update={'pages':pages})
+    from docpipe.renderers.layout_integrity import prepare_layout
+    return prepare_layout(document.model_copy(update={'pages':pages}))

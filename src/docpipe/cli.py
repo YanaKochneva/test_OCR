@@ -34,32 +34,8 @@ def main() -> int:
     ms.add_parser("list")
     ms.add_parser("download")
 
-    e = sub.add_parser("eval")
-    e.add_argument("reference", type=Path, help="Reference DOCX file")
-    e.add_argument("ir", type=Path, help="Generated document.json")
-    e.add_argument("--output", type=Path, help="Optional JSON report path")
-
-    b = sub.add_parser("benchmark", help="Evaluate paired reference/scan subdirectories")
-    b.add_argument("root", type=Path)
-    b.add_argument("--out", type=Path, required=True)
-    b.add_argument("--engine", default="docling")
-    b.add_argument("--config", type=Path)
-    b.add_argument("--timeout", type=int, default=1800)
-    b.add_argument("--dry-run", action="store_true", help="Validate pairs without running OCR")
-    b.add_argument("--cases", nargs="+", help="Only these relative subdirectory names")
-
     a = p.parse_args()
     cfg = load_config(getattr(a, "config", None))
-
-    if a.cmd == "benchmark":
-        from docpipe.benchmark import run_benchmark
-        try:
-            report = run_benchmark(a.root, a.out, engine=a.engine, config=a.config,
-                                   timeout=a.timeout, dry_run=a.dry_run, selected_cases=a.cases)
-        except ValueError as exc:
-            p.error(str(exc))
-        print(json.dumps(report["summary"], ensure_ascii=False, indent=2))
-        return 0 if all(c["status"] in {"ready", "evaluated"} for c in report["cases"]) else 1
 
     if a.cmd == "doctor":
         from docpipe.doctor import run_doctor
@@ -94,6 +70,8 @@ def main() -> int:
             render_pdf_positional(doc, a.out / "document-positional.pdf", a.out)
         if "docx" in outputs:
             render_docx(doc, a.out / "document.docx", a.out)
+        from docpipe.review import review_after_render
+        review_after_render(doc, cfg, a.out)
         from docpipe.verify.checks import verify_document
         from docpipe.style_review import write_style_review
         write_style_review(doc,a.out)
@@ -127,16 +105,6 @@ def main() -> int:
             print(json.dumps({"engine": cfg.api.default_engine, "offline": cfg.offline}, ensure_ascii=False))
             return 0
         print("Загрузка моделей выполняется только явно и требует доступного источника моделей.")
-        return 0
-
-    if a.cmd == "eval":
-        from docpipe.evaluation import compare_docx_reference
-        report = compare_docx_reference(a.reference, a.ir)
-        rendered = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
-        if a.output:
-            a.output.parent.mkdir(parents=True, exist_ok=True)
-            a.output.write_text(rendered + "\n", encoding="utf-8")
-        print(rendered)
         return 0
 
     return 2

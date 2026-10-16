@@ -8,7 +8,7 @@ import threading
 import time
 import uuid
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -79,6 +79,34 @@ class JobManager:
         self.ready = False
         self._started = False
 
+    def _persist(self, job: Job) -> None:
+        data = asdict(job)
+        for name in ('input_path', 'work_dir', 'result_zip', 'document_json'):
+            if data[name] is not None:
+                data[name] = str(data[name])
+        temporary = job.work_dir / 'job.json.tmp'
+        temporary.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+        temporary.replace(job.work_dir / 'job.json')
+
+    def _restore_jobs(self) -> None:
+        for metadata in self.config.api.work_dir.glob('*/job.json'):
+            try:
+                data = json.loads(metadata.read_text(encoding='utf-8'))
+                for name in ('input_path', 'work_dir', 'result_zip', 'document_json'):
+                    if data.get(name) is not None:
+                        data[name] = Path(data[name])
+                job = Job(**data)
+                if job.status in {'queued', 'running'}:
+                    job.status = 'failed'
+                    job.error = 'Processing interrupted by service restart; submit again'
+                    job.finished_at = time.time()
+                    job.input_path.unlink(missing_ok=True)
+                    self._persist(job)
+                self._jobs[job.id] = job
+            except Exception:
+                logger.exception('Cannot restore job metadata %s', metadata)
+        self.cleanup_ttl()
+
     def _increment_metric(self, name: str) -> None:
         with self._lock:
             self.metrics[name] = self.metrics.get(name, 0) + 1
@@ -87,6 +115,8 @@ class JobManager:
         if self._started:
             return
         """Запустить workers и загрузить настроенный движок до первого запроса."""
+        self._stop.clear()
+        self._restore_jobs()
         default_engine = self.config.api.default_engine
         self._get_engine(default_engine)
         for i in range(self.config.api.workers):
@@ -126,7 +156,7 @@ class JobManager:
                     job.error = "cancelled during service shutdown"
                     job.finished_at = time.time()
                     job.input_path.unlink(missing_ok=True)
-                    shutil.rmtree(job.work_dir, ignore_errors=True)
+                    self._persist(job)
                     self._increment_metric("jobs_cancelled_total")
             finally:
                 self._queue.task_done()
@@ -156,8 +186,9 @@ class JobManager:
                 raise queue.Full("Очередь и хранилище заданий заполнены")
             self._jobs[job_id] = job
         try:
+            self._persist(job)
             self._queue.put_nowait(job)
-        except queue.Full:
+        except Exception:
             with self._lock:
                 self._jobs.pop(job_id, None)
                 self._increment_metric("jobs_rejected_total")
@@ -258,8 +289,13 @@ class JobManager:
                     f"Движок {job.engine} не вернул текст. {detail}"
                 )
             self._render_outputs(doc, job, out)
+            from docpipe.review import review_after_render
+            post_review=review_after_render(doc,self.config,out)
+            pre_path=out/'review-before.json'
+            pre_review=json.loads(pre_path.read_text(encoding='utf-8')) if pre_path.exists() else {'review_required':False}
             from docpipe.style_review import write_style_review
-            job.review_required=write_style_review(doc,out)['review_required']
+            job.review_required=(write_style_review(doc,out)['review_required']
+                or pre_review['review_required'] or post_review['review_required'])
             verification = verify_document(out)
             (out / "verification.json").write_text(
                 json.dumps(verification, ensure_ascii=False, indent=2) + "\n",
@@ -301,6 +337,10 @@ class JobManager:
         finally:
             job.finished_at = time.time()
             job.input_path.unlink(missing_ok=True)
+            try:
+                self._persist(job)
+            except OSError:
+                logger.exception("Cannot persist job %s", job.id)
 
     @staticmethod
     def _progress(job: Job, current: int, total: int) -> None:

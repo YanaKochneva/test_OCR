@@ -3,15 +3,26 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 320s
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
-      DOCPIPE_OFFLINE: "true"
-      DOCPIPE_API__DEFAULT_ENGINE: "docling"
+      DOCPIPE_OFFLINE: "false"
+      DOCPIPE_REVIEW__LLM_ENABLED: "true"
+      DOCPIPE_REVIEW__PROVIDER: aitunnel
+      DOCPIPE_REVIEW__API_MODEL: ${DOCPIPE_REVIEW_MODEL:-gpt-4.1-mini}
+      AITUNNEL_API_KEY: ${AITUNNEL_API_KEY:?Set AITUNNEL_API_KEY in .env}
+      DOCPIPE_API__DEFAULT_ENGINE: docling
       DOCPIPE_API__WORKERS: "1"
+      DOCPIPE_API__REQUIRE_API_KEY: "true"
+      DOCPIPE_API__API_KEY: ${DOCPIPE_API_KEY:?Set DOCPIPE_API_KEY in .env}
     read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     tmpfs:
-      - /tmp
+      - /tmp:size=2g,mode=1777
     volumes:
       - docpipe_jobs:/app/data/jobs
 volumes:

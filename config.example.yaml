@@ -1,4 +1,3 @@
-# Допущение Фазы 0: GPU определяется автоматически; численная цель latency не задаётся до baseline.
 force_ocr: auto
 default_dpi: 300
 profile: balanced
@@ -37,8 +36,11 @@ api:
   max_jobs: 1000
   result_ttl_seconds: 3600
   work_dir: data/jobs
-  sync_max_pages: 10
+  max_batch_files: 16
+  max_batch_mb: 200
+  sync_max_pages: 300
   sync_timeout_seconds: 600
   shutdown_timeout_seconds: 300
   # Configure DOCPIPE_API__API_KEY with a secret of at least 32 characters before deployment.
+  require_api_key: true
   api_key: null

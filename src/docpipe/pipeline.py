@@ -80,7 +80,7 @@ def _process_page(page, index, layer, engine, config, out_dir):
         try:
             raster = rasterize_page(page, dpi, config.limits)
             prepare = getattr(engine, 'prepare_raster', None)
-            if prepare is not None:
+            if prepare is not None and config.render.correct_page_orientation:
                 prepared = prepare(raster)
                 if prepared.image is not raster.image:
                     raster.image.close()
@@ -100,7 +100,7 @@ def _process_page(page, index, layer, engine, config, out_dir):
             from docpipe.stages.graphic_fields import retain_graphic_fields
             blocks = retain_graphic_fields(blocks, raster.image, meta)
             blocks = _save_figures(blocks, raster, out_dir, index)
-            if engine.name not in {'paddleocr_vl', 'ppstructure', 'glm_ocr'}:
+            if engine.name not in {'paddleocr_vl', 'ppstructure'}:
                 blocks = assign_order(blocks, raster.width_pt)
             blocks = postprocess(attach_captions(blocks), config.render.headers_footers)
             for name in ('_refinement_reader', '_short_value_reader', '_latin_reader', '_cyrillic_reader'):
@@ -181,9 +181,12 @@ def parse(path: str | Path, config: AppConfig | None = None, engine: str = 'docl
                     progress_callback(index + 1, total)
         from docpipe.stages.repeated_margins import classify_repeated_margins
         pages = classify_repeated_margins(pages, config.render.headers_footers)
-        return Document(source=SourceInfo(file=str(source), sha256=_sha256(source),
+        result = Document(source=SourceInfo(file=str(source), sha256=_sha256(source),
                         type=SourceType.PDF if source.suffix.lower() == '.pdf' else SourceType.IMAGE),
                         engine=eng.info(), pages=pages, timings={'parse_total': time.perf_counter()-started})
+        from docpipe.review import review_before_render
+        result, _ = review_before_render(result, config, out_dir)
+        return result
     finally:
         if pdf_path != source:
             pdf_path.unlink(missing_ok=True)

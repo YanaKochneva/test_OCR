@@ -52,7 +52,7 @@ def run_doctor(config: AppConfig) -> dict:
         "rasterization backend",
     )
     # OCR engines (optional): проверяем только наличие модуля, без загрузки моделей.
-    for module, engine in (("docling", "docling"), ("paddleocr", "ppstructure")):
+    for module, engine in (("docling", "docling"),):
         present = importlib.util.find_spec(module) is not None
         add(f"ocr_backend:{engine}", "PASS" if present else "WARN",
             "installed" if present else "optional dependency not installed")

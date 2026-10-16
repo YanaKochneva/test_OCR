@@ -43,7 +43,7 @@ def _text_block(block: Block, top: float | None = None) -> str:
 
 def _table_markup(block: Block, top: float | None = None) -> str:
     """Render OCR cells as one positioned, semantic HTML table."""
-    layout = build_table_layout(block)
+    layout = build_table_layout(block, preserve_geometry=True)
     box = block.bbox
     top = box.y0 if top is None else top
     style = _box_style(box.x0, top, box.x1, top + sum(layout.row_heights))
@@ -76,7 +76,23 @@ def _table_markup(block: Block, top: float | None = None) -> str:
                 )
             rowspan = f' rowspan="{cell.rowspan}"' if cell.rowspan > 1 else ""
             colspan = f' colspan="{cell.colspan}"' if cell.colspan > 1 else ""
-            output.append(f"<td{rowspan}{colspan}>{escape(cell.text)}</td>")
+            source=next((c for c in block.table.cells if (c.row,c.col)==(cell.row,cell.col)),None)
+            size=(source.lines[0].font_size_pt if source and source.lines else TABLE_FONT_PT)
+            content=escape(cell.text)
+            normalize=lambda value: ''.join(value.split())
+            if (source and source.lines and
+                    normalize(''.join(line.text for line in source.lines))==normalize(cell.text)):
+                height=max(1,sum(layout.row_heights[cell.row:cell.row+cell.rowspan])-3)
+                fragments=[]
+                for line in source.lines:
+                    left=max(0,line.bbox.x0-source.bbox.x0-2)
+                    top=max(0,line.bbox.y0-source.bbox.y0-1-size*.2)
+                    scale=(line.horizontal_scale_pct or 100)/100
+                    fragments.append(f'<span style="position:absolute;left:{left:.3f}pt;top:{top:.3f}pt;'
+                        f'font-size:{size:.2f}pt;line-height:1;white-space:pre;transform-origin:top left;'
+                        f'transform:scaleX({scale:.5f})">{escape(line.text)}</span>')
+                content=f'<div style="position:relative;height:{height:.3f}pt">'+''.join(fragments)+'</div>'
+            output.append(f'<td{rowspan}{colspan} style="font-size:{size:.2f}pt">{content}</td>')
             col += cell.colspan
         output.append("</tr>")
     output.append("</tbody></table>")
@@ -91,12 +107,13 @@ def render(
 ) -> Path:
     """Render positioned page canvases with consistent type and real tables."""
     out.parent.mkdir(parents=True, exist_ok=True)
+    from docpipe.renderers.fixed_layout import stable_document
+    from docpipe.renderers.page_size import a4_document
+    document = stable_document(a4_document(document))
     image_root = base_dir or out.parent
     body: list[str] = ['<main id="document">']
     for page in document.pages:
-        text_tops = collision_free_text_tops(
-            page.blocks, lambda block: text_style(block.type.value)
-        )
+        text_tops = {}
         body.append(
             f'<section class="page" data-page="{page.index + 1}" '
             f'style="width:{page.width_pt:.3f}pt;height:{page.height_pt:.3f}pt">'

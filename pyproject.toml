@@ -5,6 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "docpipe"
 version = "0.1.0"
+readme = "README.md"
 description = "Конвейер восстановления документов из сканов"
 requires-python = ">=3.10"
 dependencies = [
@@ -27,9 +28,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["ruff==0.14.2", "mypy==1.18.2"]
 docling = ["docling==2.134.0"]
-paddle = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
-vl = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
-glm = ["lxml>=5,<7"]
 pdf = ["weasyprint==68.0"]
 
 [project.scripts]
@@ -42,7 +40,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-docpipe = ["api/static/*.html"]
+docpipe = ["assets/fonts/*.ttf", "assets/fonts/*.txt"]
 
 [tool.ruff]
 line-length = 100

@@ -15,17 +15,8 @@ from typing import Callable
 from docpipe.config import AppConfig
 from docpipe.engines import create_engine
 from docpipe.engines.base import LayoutOcrEngine
-from docpipe.ir import Document
 from docpipe.pipeline import parse
 from docpipe.quality import document_metrics, recognized_text_chars
-from docpipe.renderers import (
-    render_docx,
-    render_html,
-    render_markdown,
-    render_pdf_flow,
-    render_pdf_positional,
-    render_pdf_searchable,
-)
 from docpipe.verify.checks import verify_document
 
 ProgressCallback = Callable[[int, int], None]
@@ -278,7 +269,8 @@ class JobManager:
             json_path = out / "document.json"
             json_path.write_text(doc.model_dump_json(indent=2), encoding="utf-8")
             job.document_json = json_path
-            if job.engine != "fake" and recognized_text_chars(doc) == 0:
+            from docpipe.stages.image_fallback import has_fallback
+            if job.engine != "fake" and recognized_text_chars(doc) == 0 and not has_fallback(doc):
                 reasons = [f"Страница {page.index + 1}: {warning}"
                            for page in doc.pages for warning in page.warnings]
                 detail = "; ".join(reasons[:3]) or (
@@ -288,7 +280,7 @@ class JobManager:
                 raise OutputQualityError(
                     f"Движок {job.engine} не вернул текст. {detail}"
                 )
-            self._render_outputs(doc, job, out)
+            doc=self._render_outputs(doc, job, out)
             from docpipe.review import review_after_render
             post_review=review_after_render(doc,self.config,out)
             pre_path=out/'review-before.json'
@@ -297,11 +289,15 @@ class JobManager:
             job.review_required=(write_style_review(doc,out)['review_required']
                 or pre_review['review_required'] or post_review['review_required'])
             verification = verify_document(out)
+            if any(check["check"] == "figure_pictogram_overlap" and check["status"] == "WARN"
+                   for check in verification["checks"]):
+                job.review_required = True
             (out / "verification.json").write_text(
                 json.dumps(verification, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
             metrics = document_metrics(doc)
+            metrics['review_required']=job.review_required
             metrics["verification"] = verification["result"]
             (out / "metrics.json").write_text(
                 json.dumps(metrics, ensure_ascii=False, indent=2) + "\n",
@@ -345,22 +341,12 @@ class JobManager:
     @staticmethod
     def _progress(job: Job, current: int, total: int) -> None:
         job.pages_total = total
-        job.progress = int(current * 100 / total) if total else 0
+        # OCR completion is followed by review, rendering, checks and packaging.
+        job.progress = min(90,int(current * 90 / total)) if total else 0
 
-    def _render_outputs(self, doc, job: Job, out: Path) -> None:
-        outputs = set(job.outputs) | {"md", "html", "pdf-flow", "pdf-positional", "docx"}
-        if "md" in outputs:
-            render_markdown(doc, out / "document.md")
-        if "html" in outputs:
-            render_html(doc, out / "document.html")
-        if "pdf-flow" in outputs:
-            render_pdf_flow(doc, out / "document-flow.pdf", out)
-        if "pdf-searchable" in outputs:
-            render_pdf_searchable(doc, job.input_path, out / "document-searchable.pdf")
-        if "pdf-positional" in outputs:
-            render_pdf_positional(doc, out / "document-positional.pdf", out)
-        if "docx" in outputs:
-            render_docx(doc, out / "document.docx", out)
+    def _render_outputs(self, doc, job: Job, out: Path):
+        from docpipe.output import render_bundle
+        return render_bundle(doc,self.config,out,job.outputs,job.input_path)
 
     def status(self, job: Job) -> dict:
         return {

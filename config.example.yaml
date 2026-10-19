@@ -23,6 +23,9 @@ figures:
   min_area_ratio: 0.001
   table_fallback_to_figure: true
 render:
+  docx_enabled: false
+  unreadable_as_image: true
+  unreadable_min_confidence: 0.7
   include_page_markers: true
   headers_footers: keep
   positional: false

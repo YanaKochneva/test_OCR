@@ -6,7 +6,6 @@ from pathlib import Path
 from PIL import Image
 
 from docpipe.config import FigureConfig
-from docpipe.ir import BBox, Block, BlockType
 
 @dataclass(frozen=True)
 class PixelBox:

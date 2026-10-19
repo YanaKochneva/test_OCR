@@ -302,8 +302,6 @@ def _format_table_cell(cell, text: str, font_size: float = TABLE_FONT_PT, source
     shading.set(qn("w:fill"), (source.background_color or '#FFFFFF')[1:] if source else 'FFFFFF')
     if source and source.lines:
         cell.text=''
-        first_size=source.lines[0].font_size_pt or font_size
-        first_offset=max(0,source.lines[0].bbox.y0-source.bbox.y0-1-first_size*.2)
         for index,line in enumerate(source.lines):
             paragraph=cell.paragraphs[0] if index==0 else cell.add_paragraph()
             size=line.font_size_pt or font_size

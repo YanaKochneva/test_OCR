@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from collections import Counter
 from pathlib import Path
 
 import pypdfium2 as pdfium

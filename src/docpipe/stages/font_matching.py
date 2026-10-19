@@ -198,7 +198,6 @@ def _probe_line(line,image,meta):
 
 def _fit_word_runs(line,image,meta):
     """Recover mixed inline emphasis when pixel word boundaries are unambiguous."""
-    from docpipe.ir import BBox,Line
     if not line.font_family:
         return line
     regions=_word_regions(line,image,meta)

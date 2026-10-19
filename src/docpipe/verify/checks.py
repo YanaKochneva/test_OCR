@@ -22,14 +22,16 @@ def ir_words(doc: Document) -> list[str]:
 
 
 def text_match(doc: Document, text: str) -> dict:
+    from collections import Counter
     expected = ir_words(doc)
     actual = words(text)
-    expected_set, actual_set = set(expected), set(actual)
+    wanted,found=Counter(expected),Counter(actual)
+    matched=sum((wanted & found).values())
     return {
-        "precision": sum(word in expected_set for word in actual) / max(1, len(actual)),
-        "recall": sum(word in actual_set for word in expected) / max(1, len(expected)),
-        "missing": [word for word in expected if word not in actual_set][:50],
-        "extra": [word for word in actual if word not in expected_set][:50],
+        "precision": matched / max(1, len(actual)),
+        "recall": matched / max(1, len(expected)),
+        "missing": list((wanted-found).elements())[:50],
+        "extra": list((found-wanted).elements())[:50],
     }
 
 
@@ -120,7 +122,7 @@ def _load_document(target: Path) -> tuple[Document, Path]:
     return Document.model_validate_json(json_path.read_text(encoding="utf-8")), out_dir
 
 
-def _figure_leakage(doc: Document) -> list[dict]:
+def _figure_leakage(doc: Document, *, pictograms: bool = False) -> list[dict]:
     leaks: list[dict] = []
     tolerance = 2.0
     for page in doc.pages:
@@ -132,6 +134,21 @@ def _figure_leakage(doc: Document) -> list[dict]:
                 a, b = block.bbox, figure.bbox
                 if (a.x0 >= b.x0 - tolerance and a.x1 <= b.x1 + tolerance
                         and a.y0 >= b.y0 - tolerance and a.y1 <= b.y1 + tolerance):
+                    # A small pictogram (e.g. cutlery on a train ticket) can also
+                    # produce an isolated cross-shaped OCR glyph. Geometry alone
+                    # does not prove text leakage. Preserve both representations
+                    # and request human review; words/numbers and large figures
+                    # remain blocking failures.
+                    ambiguous = (
+                        block.text.strip() in {"X", "x", "Х", "х", "×", "+"}
+                        and 0 < a.x1 - a.x0 <= 12
+                        and 0 < a.y1 - a.y0 <= 12
+                        and 0 < b.x1 - b.x0 <= 24
+                        and 0 < b.y1 - b.y0 <= 36
+                        and figure.source_label not in {"ocr_image_fallback", "graphic_field"}
+                    )
+                    if ambiguous != pictograms:
+                        continue
                     leaks.append({"page": page.index + 1, "block": block.id, "figure": figure.id})
                     break
     return leaks
@@ -211,7 +228,10 @@ def _verify_pdf(doc: Document, out_dir: Path, checks: list[dict]) -> None:
     checks.append(_check("searchable_pages", "PASS" if page_count == len(doc.pages) else "FAIL",
                          f"PDF={page_count}, IR={len(doc.pages)}"))
     extracted = "\n".join(extracted_pages)
-    if not extracted.strip():
+    from docpipe.stages.image_fallback import has_fallback
+    if not extracted.strip() and has_fallback(doc):
+        checks.append(_check('searchable_text','WARN','text regions intentionally preserved as images'))
+    elif not extracted.strip():
         checks.append(_check("searchable_text", "FAIL", "PDF has no extractable text"))
     else:
         recall = text_match(doc, extracted)["recall"] if ir_words(doc) else 1.0
@@ -252,6 +272,8 @@ def verify_document(target: Path | str) -> dict:
     )
     if text_chars:
         checks.append(_check("ocr_text", "PASS", f"recognized_text_chars={text_chars}"))
+    elif any(b.source_label=='ocr_image_fallback' for p in doc.pages for b in p.blocks):
+        checks.append(_check('ocr_text','WARN','unreadable regions preserved as images in experimental mode'))
     elif doc.engine.name == "fake":
         checks.append(_check("ocr_text", "WARN", "fake test engine does not perform OCR"))
     else:
@@ -308,6 +330,10 @@ def verify_document(target: Path | str) -> dict:
                          "; ".join(missing_captions[:10]) if missing_captions else "caption references resolve"))
     leaks = _figure_leakage(doc)
     checks.append(_check("figure_leakage", "FAIL" if leaks else "PASS", f"leaks={len(leaks)}"))
+    pictograms = _figure_leakage(doc, pictograms=True)
+    checks.append(_check("figure_pictogram_overlap", "WARN" if pictograms else "PASS",
+                         f"ambiguous glyphs preserved; review={pictograms}" if pictograms
+                         else "no ambiguous pictogram glyphs"))
 
     flow_errors: list[str] = []
     for name in ("document.md", "document.html"):
@@ -322,12 +348,40 @@ def verify_document(target: Path | str) -> dict:
                          "; ".join(flow_errors[:10]) if flow_errors else "figures referenced in Markdown and HTML"))
 
     _verify_pdf(doc, out_dir, checks)
-    _verify_docx(doc, out_dir, checks)
+    import json
+    policy_path=out_dir/'output-policy.json'
+    policy=json.loads(policy_path.read_text(encoding='utf-8')) if policy_path.is_file() else {}
+    if policy.get('docx_enabled',True):
+        _verify_docx(doc, out_dir, checks)
+    else:
+        checks.append(_check('docx_structure','SKIP','DOCX generation disabled by output policy'))
+    fallback_count=sum(b.source_label=='ocr_image_fallback' for p in doc.pages for b in p.blocks)
+    checks.append(_check('image_fallback','WARN' if fallback_count else 'PASS',
+        f'{fallback_count} text regions intentionally stored as source crops' if fallback_count else 'no text-image fallback'))
     from docpipe.style_review import review_items
     pending=review_items(doc)
     checks.append(_check('typography_review','WARN' if pending else 'PASS',
         f'{len(pending)} fragments need review; output is preliminary' if pending else
         'no ambiguity markers; exact visual fidelity requires separate validation'))
+    import json
+    review_warnings=[]
+    export_errors=[]
+    for name in ('review-before.json','review-after.json','review-formatting.json'):
+        path=out_dir/name
+        if path.is_file():
+            try:
+                report=json.loads(path.read_text(encoding='utf-8'))
+                export_errors.extend(f'{name}: {item.get("kind")}' for item in report.get('issues',[])
+                    if item.get('kind') in {'docx_text_missing','pdf_text_missing','pdf_page_count',
+                        'pdf_page_missing','docx_read_error','pdf_read_error'})
+                if report.get('review_required'):
+                    review_warnings.append(f'{name}: {report.get("status","unknown")}')
+            except (OSError, ValueError, AttributeError):
+                review_warnings.append(f'{name}: unreadable review report')
+    checks.append(_check('document_review','WARN' if review_warnings else 'PASS',
+        '; '.join(review_warnings) if review_warnings else 'no pending review flags in available reports'))
+    checks.append(_check('export_text_integrity','FAIL' if export_errors else 'PASS',
+        '; '.join(export_errors) if export_errors else 'no deterministic export loss reported'))
     required = ("document.md", "document.html", "document-flow.pdf")
     missing = [name for name in required if not (out_dir / name).is_file()]
     checks.append(_check("artifacts", "FAIL" if missing else "PASS",

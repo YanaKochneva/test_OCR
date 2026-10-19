@@ -34,7 +34,7 @@ def _memory_failure(exc: Exception) -> bool:
         if isinstance(current, MemoryError):
             return True
         if any(token in str(current).casefold() for token in
-               ('out of memory', 'failed to allocate', 'insufficient memory', 'bad allocation', 'bad_alloc')):
+               ('out of memory', 'failed to allocate', 'unable to allocate', 'insufficient memory', 'bad allocation', 'bad_alloc')):
             return True
         current = current.__cause__ or current.__context__
     return False
@@ -74,10 +74,16 @@ def _process_page(page, index, layer, engine, config, out_dir):
     if dpi != config.default_dpi:
         warnings.append(f'Raster DPI limited: requested={config.default_dpi}, actual={dpi}; '
                         f'pixel budget={config.limits.max_pixels_per_page}')
+    reset_required = False
     for attempt in range(3):
         raster = None
         blocks = None
         try:
+            if reset_required:
+                reset = getattr(engine, 'reset_after_memory_error', None)
+                if reset is not None:
+                    reset()
+                reset_required = False
             raster = rasterize_page(page, dpi, config.limits)
             prepare = getattr(engine, 'prepare_raster', None)
             if prepare is not None and config.render.correct_page_orientation:
@@ -103,6 +109,8 @@ def _process_page(page, index, layer, engine, config, out_dir):
             if engine.name not in {'paddleocr_vl', 'ppstructure'}:
                 blocks = assign_order(blocks, raster.width_pt)
             blocks = postprocess(attach_captions(blocks), config.render.headers_footers)
+            from docpipe.stages.image_fallback import fallback_unreadable
+            blocks = fallback_unreadable(blocks,raster,config,out_dir,index)
             for name in ('_refinement_reader', '_short_value_reader', '_latin_reader', '_cyrillic_reader'):
                 reader = getattr(engine, name, None)
                 failures = getattr(reader, 'failures', []) if reader is not None else []
@@ -121,7 +129,11 @@ def _process_page(page, index, layer, engine, config, out_dir):
             warnings.append(f'Page {index+1}, attempt {attempt+1}, DPI {dpi}: {detail}')
             next_dpi = max(1, math.floor(dpi * .7))
             if _memory_failure(exc) and attempt < 2 and next_dpi < dpi:
-                dpi = next_dpi
+                reset_required = True
+                # First release model state and retry at the original resolution.
+                # Only the final attempt lowers DPI, preserving page geometry.
+                if attempt:
+                    dpi = next_dpi
                 continue
             return Page(index=index, width_pt=width, height_pt=height,
                         rotation=page.get_rotation() or 0, raster_dpi=dpi,

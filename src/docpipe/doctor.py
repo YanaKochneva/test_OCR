@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib.util
 import platform
-import shutil
 import sys
 from importlib.metadata import PackageNotFoundError, version
 

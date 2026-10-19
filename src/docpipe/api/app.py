@@ -38,6 +38,13 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.state.manager = manager
     app.state.config = cfg
 
+    @app.get("/", include_in_schema=False)
+    def user_interface() -> FileResponse:
+        return FileResponse(
+            Path(__file__).with_name("static") / "index.html",
+            media_type="text/html; charset=utf-8",
+        )
+
     def authorize(api_key: str | None) -> None:
         if cfg.api.require_api_key and (
             not cfg.api.api_key
@@ -73,6 +80,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         unsupported = sorted(set(outputs) - _ALLOWED_OUTPUTS)
         if unsupported:
             raise HTTPException(status_code=400, detail=f"unsupported outputs: {unsupported}")
+        if not cfg.render.docx_enabled:
+            outputs=[item for item in outputs if item!='docx'] or ['pdf-positional']
         return engine, outputs
 
     @app.get("/healthz")

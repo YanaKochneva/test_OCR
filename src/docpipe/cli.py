@@ -22,7 +22,7 @@ def main() -> int:
     q.add_argument(
         "--outputs",
         nargs="+",
-        default=["md", "html", "pdf-flow", "pdf-positional", "docx"],
+        default=["md", "html", "pdf-flow", "pdf-positional"],
     )
 
     v = sub.add_parser("verify")
@@ -45,10 +45,6 @@ def main() -> int:
 
     if a.cmd == "parse":
         from docpipe.pipeline import parse
-        from docpipe.renderers import (
-            render_docx, render_html, render_markdown, render_pdf_flow,
-            render_pdf_positional, render_pdf_searchable,
-        )
         a.out.mkdir(parents=True, exist_ok=True)
         doc = parse(
             a.file, cfg, engine=a.engine, out_dir=a.out,
@@ -56,22 +52,10 @@ def main() -> int:
                 f"OCR pages: {done}/{total}", flush=True
             ),
         )
-        (a.out / "document.json").write_text(doc.model_dump_json(indent=2), encoding="utf-8")
-        outputs = set(a.outputs) | {"md", "html", "pdf-flow", "pdf-positional", "docx"}
-        if "md" in outputs:
-            render_markdown(doc, a.out / "document.md")
-        if "html" in outputs:
-            render_html(doc, a.out / "document.html")
-        if "pdf-flow" in outputs:
-            render_pdf_flow(doc, a.out / "document-flow.pdf", a.out)
-        if "pdf-searchable" in outputs:
-            render_pdf_searchable(doc, a.file, a.out / "document-searchable.pdf")
-        if "pdf-positional" in outputs:
-            render_pdf_positional(doc, a.out / "document-positional.pdf", a.out)
-        if "docx" in outputs:
-            render_docx(doc, a.out / "document.docx", a.out)
+        from docpipe.output import render_bundle
+        doc=render_bundle(doc,cfg,a.out,a.outputs,a.file)
         from docpipe.review import review_after_render
-        review_after_render(doc, cfg, a.out)
+        post_review=review_after_render(doc, cfg, a.out)
         from docpipe.verify.checks import verify_document
         from docpipe.style_review import write_style_review
         write_style_review(doc,a.out)
@@ -82,6 +66,10 @@ def main() -> int:
         )
         from docpipe.quality import document_metrics
         metrics = document_metrics(doc)
+        pre_path=a.out/'review-before.json'
+        pre_review=json.loads(pre_path.read_text(encoding='utf-8')) if pre_path.is_file() else {}
+        metrics['review_required']=bool(metrics['review_required'] or
+            pre_review.get('review_required') or post_review.get('review_required'))
         metrics["verification"] = verification["result"]
         (a.out / "metrics.json").write_text(
             json.dumps(metrics, ensure_ascii=False, indent=2) + "\n",

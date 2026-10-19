@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,6 +43,9 @@ class RenderConfig(BaseModel):
     positional: bool = False
     formatting_reference: Path | None = None
     correct_page_orientation: bool = True
+    docx_enabled: bool = False
+    unreadable_as_image: bool = True
+    unreadable_min_confidence: float = Field(default=0.7,ge=0,le=1)
 
 
 class ReviewConfig(BaseModel):
@@ -52,8 +55,15 @@ class ReviewConfig(BaseModel):
     provider: Literal['aitunnel'] = 'aitunnel'
     api_model: str = 'gpt-4.1-mini'
     timeout_seconds: int = Field(default=45, ge=1, le=300)
-    max_calls: int = Field(default=100, ge=2, le=200)
-    batch_chars: int = Field(default=800, ge=200, le=12000)
+    max_calls: int = Field(default=40, ge=2, le=200)
+    batch_chars: int = Field(default=10000, ge=200, le=12000)
+    stage_timeout_seconds: int = Field(default=180, ge=1, le=900)
+    visual_enabled: bool = False
+    visual_model: str | None = None
+    visual_max_pages: int = Field(default=20, ge=1, le=300)
+    visual_max_calls: int = Field(default=40, ge=1, le=600)
+    visual_max_side: int = Field(default=1600, ge=800, le=2400)
+    visual_timeout_seconds: int = Field(default=180, ge=1, le=900)
 
 
 class ApiConfig(BaseModel):
@@ -96,4 +106,11 @@ def load_config(path: Path | None = None) -> AppConfig:
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(raw, dict):
         raise ValueError("Корень YAML-конфига должен быть объектом")
-    return AppConfig(**raw)
+    def merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+        result=dict(base)
+        for key,value in overrides.items():
+            result[key]=(merge(result[key],value) if isinstance(value,dict)
+                         and isinstance(result.get(key),dict) else value)
+        return result
+    # Explicit environment settings must override YAML, including nested fields.
+    return AppConfig(**merge(raw,AppConfig().model_dump(exclude_unset=True)))

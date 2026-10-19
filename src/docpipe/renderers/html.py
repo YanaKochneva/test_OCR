@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from docpipe.ir import Block, BlockType, Document
 from docpipe.renderers.table_layout import build_table_layout
-from docpipe.renderers.text_layout import collision_free_text_tops, estimate_text_height, wrap_text
+from docpipe.renderers.text_layout import estimate_text_height, wrap_text
 from docpipe.renderers.typography import FONT_FAMILY, TABLE_FONT_PT, text_style
 
 

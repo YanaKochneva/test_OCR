@@ -33,9 +33,9 @@ def document_metrics(doc: Document) -> dict:
         "tables": block_counts.get(BlockType.TABLE.value, 0),
         "figures": block_counts.get(BlockType.FIGURE.value, 0),
         "parse_seconds": doc.timings.get("parse_total"),
-        "review_required": bool(pending),
+        "review_required": bool(pending) or any(b.source_label=='ocr_image_fallback' for p in doc.pages for b in p.blocks),
         "typography_review_fragments": len(pending),
         "cer": None,
         "wer": None,
-        "accuracy_note": "CER/WER require a ground-truth transcript; use docpipe eval with a labeled DOCX reference.",
+        "accuracy_note": "CER/WER require comparison against a labeled reference; successful processing does not measure recognition accuracy.",
     }

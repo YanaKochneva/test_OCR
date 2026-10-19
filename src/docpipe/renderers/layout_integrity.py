@@ -40,6 +40,12 @@ def _deduplicate(blocks):
     return output
 
 
+def without_overlapping_ocr_echoes(document):
+    """Expected export text: collapse only the same spatial echoes as rendering."""
+    return document.model_copy(update={'pages':[
+        page.model_copy(update={'blocks':_deduplicate(page.blocks)}) for page in document.pages]})
+
+
 def _move_box(box, dy):
     return box.model_copy(update={'y0':box.y0+dy,'y1':box.y1+dy})
 

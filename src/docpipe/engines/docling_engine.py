@@ -52,7 +52,6 @@ class DoclingEngine(LayoutOcrEngine):
 
     def load(self) -> None:
         try:
-            import docling
             from docling.datamodel.base_models import InputFormat
             from docling.datamodel.pipeline_options import (
                 PdfPipelineOptions,
@@ -161,6 +160,16 @@ class DoclingEngine(LayoutOcrEngine):
 
         self._loaded = True
 
+    def reset_after_memory_error(self):
+        """Release cached pipeline/readers before retrying a failed page."""
+        import gc
+        self._converter = None
+        self._loaded = False
+        for name in ('_refinement_reader', '_short_value_reader', '_latin_reader', '_cyrillic_reader'):
+            setattr(self, name, None)
+        gc.collect()
+        self.load()
+
     def analyze_page(
         self,
         image: Image.Image,
@@ -267,16 +276,23 @@ class DoclingEngine(LayoutOcrEngine):
                 # Tables are reread below within measured cell boundaries.
                 from PIL import ImageDraw
                 if any(block.table is not None for block in blocks):
+                    previous_image = text_image
                     text_image = text_image.copy()
+                    if previous_image is not image:
+                        previous_image.close()
                     draw = ImageDraw.Draw(text_image)
                     sx, sy = image.width / page_meta.width_pt, image.height / page_meta.height_pt
                     for block in blocks:
                         if block.table is not None:
                             box = block.bbox
                             draw.rectangle((box.x0*sx, box.y0*sy, box.x1*sx, box.y1*sy), fill='white')
-                blocks = refine_text_blocks(
-                    blocks, self._projected_lines(text_image,page_meta),page_meta.height_pt,
-                    confirm_candidate=lambda candidates: self._confirm_text_reread(candidates, image, page_meta))
+                try:
+                    blocks = refine_text_blocks(
+                        blocks, self._projected_lines(text_image,page_meta),page_meta.height_pt,
+                        confirm_candidate=lambda candidates: self._confirm_text_reread(candidates, image, page_meta))
+                finally:
+                    if text_image is not image:
+                        text_image.close()
                 blocks = self._refine_table_cells(blocks,image,page_meta)
                 if os.getenv('DOCPIPE_OCR_TABLE_RECONCILIATION', '1') == '1':
                     from docpipe.stages.table_reconciliation import reconcile_table_lines

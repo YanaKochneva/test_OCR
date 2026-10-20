@@ -56,6 +56,7 @@ class BBox(StrictModel):
 
 
 class Line(StrictModel):
+    confidence: float | None = Field(default=None, ge=0, le=1)
     text: str
     bbox: BBox
     font_size_pt: float | None = Field(default=None, gt=0)
@@ -66,15 +67,16 @@ class Line(StrictModel):
     font_match_margin: float | None = Field(default=None, ge=0)
     baseline_from_top_pt: float | None = Field(default=None, ge=0)
     glyph_offset_x_pt: float = 0
-    runs: list['Line'] | None = None
+    runs: list["Line"] | None = None
     review_required: bool = False
     review_reason: str | None = None
-    color: str | None = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     horizontal_scale_pct: float | None = Field(default=None, gt=0)
     rotation: int = Field(default=0, ge=0, le=270)
 
 
 class TableCell(StrictModel):
+    confidence: float | None = Field(default=None, ge=0, le=1)
     row: int = Field(ge=0)
     col: int = Field(ge=0)
     rowspan: int = Field(default=1, ge=1)
@@ -82,7 +84,7 @@ class TableCell(StrictModel):
     text: str
     bbox: BBox
     lines: list[Line] | None = None
-    background_color: str | None = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')
+    background_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
 
 
 class TableData(StrictModel):
@@ -90,7 +92,7 @@ class TableData(StrictModel):
     cells: list[TableCell] = Field(default_factory=list)
     n_rows: int = Field(default=0, ge=0)
     n_cols: int = Field(default=0, ge=0)
-    border_color: str | None = Field(default=None, pattern=r'^#[0-9a-fA-F]{6}$')
+    border_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     border_width_pt: float | None = Field(default=None, gt=0)
 
 

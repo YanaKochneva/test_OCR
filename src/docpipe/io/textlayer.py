@@ -17,8 +17,11 @@ _WORD = re.compile(r"\S+")
 def _script_count(text: str, scripts: list[str]) -> int:
     n = 0
     for ch in text:
-        if "cyrillic" in scripts and _CYR.match(ch): n += 1; continue
-        if "latin" in scripts and _LAT.match(ch): n += 1
+        if "cyrillic" in scripts and _CYR.match(ch):
+            n += 1
+            continue
+        if "latin" in scripts and _LAT.match(ch):
+            n += 1
     return n
 
 
@@ -27,7 +30,8 @@ def _mixed_words(text: str) -> int:
     for word in _WORD.findall(text):
         has_cyr = bool(_CYR.search(word))
         has_lat = bool(_LAT.search(word))
-        if has_cyr and has_lat: total += 1
+        if has_cyr and has_lat:
+            total += 1
     return total
 
 
@@ -44,7 +48,12 @@ def classify_text(text: str, config: TextLayerConfig) -> TextLayerStatus:
     replacements = text.count(_REPLACEMENT) / max(1, len(text))
     words = _WORD.findall(text)
     mixed = _mixed_words(text) / max(1, len(words))
-    if expected < config.min_expected_script_ratio or controls > config.max_control_ratio or replacements > config.max_replacement_ratio or mixed > config.max_mixed_script_word_ratio:
+    if (
+        expected < config.min_expected_script_ratio
+        or controls > config.max_control_ratio
+        or replacements > config.max_replacement_ratio
+        or mixed > config.max_mixed_script_word_ratio
+    ):
         return TextLayerStatus.GARBAGE
     return TextLayerStatus.VALID
 

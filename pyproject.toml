@@ -7,7 +7,7 @@ name = "docpipe"
 version = "0.1.0"
 readme = "README.md"
 description = "Конвейер восстановления документов из сканов"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
   "pydantic==2.13.4",
   "pydantic-settings==2.14.1",
@@ -26,8 +26,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff==0.14.2", "mypy==1.18.2", "types-PyYAML==6.0.12.20260906"]
-docling = ["docling==2.134.0"]
+glm-review = ["pymorphy3==2.0.6", "pymorphy3-dicts-ru==2.4.417150.4580142"]
+docling = ["docling==2.134.0", "rapidocr==3.9.1", "onnxruntime>=1.20,<2"]
 pdf = ["weasyprint==68.0"]
 
 [project.scripts]
@@ -40,11 +40,4 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-docpipe = ["assets/fonts/*.ttf", "assets/fonts/*.txt"]
-
-[tool.ruff]
-line-length = 100
-
-[tool.mypy]
-strict = true
-files = ["src/docpipe/ir.py", "src/docpipe/config.py"]
+docpipe = ["assets/fonts/*.ttf", "assets/fonts/*.txt", "api/static/*.html"]

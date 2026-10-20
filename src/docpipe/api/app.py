@@ -1,20 +1,22 @@
 from __future__ import annotations
 
-import json
 import hmac
+import json
 import queue
 import shutil
 import tempfile
 import time
 import uuid
 import zipfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
-from contextlib import asynccontextmanager
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from starlette.background import BackgroundTask
 
+from docpipe.api.contracts import AgentDocument, JobStatus
 from docpipe.api.jobs import JobManager
 from docpipe.config import AppConfig
 
@@ -24,10 +26,11 @@ _ALLOWED_OUTPUTS = {"json", "md", "html", "pdf-flow", "pdf-searchable", "pdf-pos
 
 def create_app(config: AppConfig | None = None) -> FastAPI:
     cfg = config or AppConfig()
-    cfg.api.work_dir.mkdir(parents=True, exist_ok=True)
     manager = JobManager(cfg)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        cfg.api.work_dir.mkdir(parents=True, exist_ok=True)
         manager.start()
         try:
             yield
@@ -38,6 +41,45 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     app.state.manager = manager
     app.state.config = cfg
 
+    @app.exception_handler(HTTPException)
+    async def http_error(_request: Request, exc: HTTPException):
+        codes = {
+            400: "invalid_request",
+            401: "unauthorized",
+            404: "not_found",
+            409: "result_not_ready",
+            413: "limit_exceeded",
+            415: "unsupported_format",
+            422: "processing_failed",
+            429: "queue_full",
+            503: "service_unavailable",
+            504: "timeout",
+        }
+        return JSONResponse(
+            status_code=exc.status_code,
+            headers=exc.headers,
+            content={
+                "detail": exc.detail,
+                "error": {
+                    "code": codes.get(exc.status_code, "server_error"),
+                    "message": exc.detail,
+                },
+            },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(_request: Request, exc: RequestValidationError):
+        from fastapi.encoders import jsonable_encoder
+
+        detail = jsonable_encoder(exc.errors())
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": detail,
+                "error": {"code": "invalid_request", "message": "Invalid request parameters"},
+            },
+        )
+
     @app.get("/", include_in_schema=False)
     def user_interface() -> FileResponse:
         return FileResponse(
@@ -47,8 +89,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
 
     def authorize(api_key: str | None) -> None:
         if cfg.api.require_api_key and (
-            not cfg.api.api_key
-            or not hmac.compare_digest(api_key or "", cfg.api.api_key)
+            not cfg.api.api_key or not hmac.compare_digest(api_key or "", cfg.api.api_key)
         ):
             raise HTTPException(status_code=401, detail="Неверный API-ключ")
 
@@ -75,13 +116,17 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         if engine not in _ALLOWED_ENGINES:
             raise HTTPException(status_code=400, detail="unknown engine")
         outputs = opts.get("outputs", ["md", "html", "json"])
-        if not isinstance(outputs, list) or not outputs or not all(isinstance(item, str) for item in outputs):
+        if (
+            not isinstance(outputs, list)
+            or not outputs
+            or not all(isinstance(item, str) for item in outputs)
+        ):
             raise HTTPException(status_code=400, detail="outputs must be a list of strings")
         unsupported = sorted(set(outputs) - _ALLOWED_OUTPUTS)
         if unsupported:
             raise HTTPException(status_code=400, detail=f"unsupported outputs: {unsupported}")
         if not cfg.render.docx_enabled:
-            outputs=[item for item in outputs if item!='docx'] or ['pdf-positional']
+            outputs = [item for item in outputs if item != "docx"] or ["pdf-positional"]
         return engine, outputs
 
     @app.get("/healthz")
@@ -102,10 +147,12 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             lines.append(f"docpipe_{name} {value}")
         return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
-    @app.post("/v1/jobs", status_code=202)
+    @app.post("/v1/jobs", status_code=202, response_model=JobStatus)
     async def create_job(
+        response: Response,
         file: UploadFile = File(...),
         options: str | None = Form(default=None),
+        request_id: str | None = Form(default=None, min_length=1, max_length=200),
         x_api_key: str | None = Header(default=None),
     ) -> dict:
         authorize(x_api_key)
@@ -126,10 +173,12 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             if size == 0:
                 raise HTTPException(status_code=400, detail="uploaded file is empty")
             try:
-                job = manager.submit(upload_path, engine, outputs)
+                job = manager.submit(upload_path, engine, outputs, request_id=request_id)
             except queue.Full as exc:
                 raise HTTPException(status_code=429, detail="Очередь заполнена") from exc
-            return {"job_id": job.id, "status": job.status}
+            response.headers["Location"] = f"/v1/jobs/{job.id}"
+            response.headers["Retry-After"] = "2"
+            return manager.status(job)
         except HTTPException:
             upload_path.unlink(missing_ok=True)
             raise
@@ -137,13 +186,44 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             upload_path.unlink(missing_ok=True)
             raise HTTPException(status_code=500, detail="Unable to submit job") from exc
 
-    @app.get("/v1/jobs/{job_id}")
+    @app.get("/v1/jobs/{job_id}", response_model=JobStatus)
     def get_job(job_id: str, x_api_key: str | None = Header(default=None)) -> dict:
         authorize(x_api_key)
         job = manager.get(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Задание не найдено")
         return manager.status(job)
+
+    @app.get("/v1/jobs/{job_id}/document", response_model=AgentDocument)
+    def get_document(job_id: str, x_api_key: str | None = Header(default=None)) -> dict:
+        authorize(x_api_key)
+        job = manager.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Задание не найдено")
+        if job.status != "completed" or not job.document_json:
+            raise HTTPException(status_code=409, detail="Результат ещё не готов")
+        from docpipe.ir import Document
+
+        document = Document.model_validate_json(job.document_json.read_text(encoding="utf-8"))
+        pages = []
+        for page in document.pages:
+            blocks = []
+            for block in sorted(page.blocks, key=lambda item: item.order):
+                if block.table:
+                    rows: dict[int, list] = {}
+                    for cell in sorted(block.table.cells, key=lambda item: (item.row, item.col)):
+                        rows.setdefault(cell.row, []).append(cell.text)
+                    blocks.append("\n".join("\t".join(cells) for cells in rows.values()))
+                elif block.text:
+                    blocks.append(block.text)
+            pages.append("\n\n".join(blocks))
+        return {
+            "job_id": job.id,
+            "request_id": job.request_id,
+            "review_required": job.review_required,
+            "text": "\n\n".join(pages),
+            "document": document,
+        }
 
     @app.get("/v1/jobs/{job_id}/result")
     def get_result(job_id: str, x_api_key: str | None = Header(default=None)) -> FileResponse:
@@ -156,7 +236,9 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         return FileResponse(job.result_zip, media_type="application/zip", filename=f"{job_id}.zip")
 
     @app.get("/v1/jobs/{job_id}/files/{path:path}")
-    def get_file(job_id: str, path: str, x_api_key: str | None = Header(default=None)) -> FileResponse:
+    def get_file(
+        job_id: str, path: str, x_api_key: str | None = Header(default=None)
+    ) -> FileResponse:
         authorize(x_api_key)
         job = manager.get(job_id)
         if not job:
@@ -195,7 +277,9 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
                 while chunk := file.file.read(1024 * 1024):
                     size += len(chunk)
                     if size > cfg.limits.max_file_mb * 1024 * 1024:
-                        raise HTTPException(status_code=413, detail="upload exceeds configured size limit")
+                        raise HTTPException(
+                            status_code=413, detail="upload exceeds configured size limit"
+                        )
                     dst.write(chunk)
         except Exception:
             path.unlink(missing_ok=True)
@@ -206,6 +290,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         job = None
         try:
             import pypdfium2 as pdfium
+
             suffix = path.suffix.lower()
             page_count = 1
             if suffix == ".pdf":
@@ -216,13 +301,18 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
                     raise HTTPException(status_code=422, detail="uploaded PDF is invalid") from exc
             else:
                 from PIL import Image
+
                 try:
                     with Image.open(path) as image:
                         page_count = getattr(image, "n_frames", 1)
                 except Exception as exc:
-                    raise HTTPException(status_code=422, detail="Uploaded image is invalid") from exc
+                    raise HTTPException(
+                        status_code=422, detail="Uploaded image is invalid"
+                    ) from exc
             if page_count > min(cfg.api.sync_max_pages, cfg.limits.max_pages):
-                raise HTTPException(status_code=413, detail="Документ превышает лимит синхронного API")
+                raise HTTPException(
+                    status_code=413, detail="Документ превышает лимит синхронного API"
+                )
             try:
                 job = manager.submit(path, engine, outputs)
             except queue.Full as exc:
@@ -243,7 +333,9 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
                     detail={"message": job.error or "Processing timed out", "job_id": job.id},
                 )
             return FileResponse(
-                job.result_zip, media_type="application/zip", filename=f"{job.id}.zip",
+                job.result_zip,
+                media_type="application/zip",
+                filename=f"{job.id}.zip",
                 headers={"X-Job-ID": job.id, "X-Review-Required": str(job.review_required).lower()},
             )
         finally:
@@ -251,12 +343,19 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             if job is None or job.status not in {"queued", "running"}:
                 path.unlink(missing_ok=True)
 
-    zip_response = {200: {"description": "Recognized document package", "content": {
-        "application/zip": {"schema": {"type": "string", "format": "binary"}}
-    }}}
+    zip_response = {
+        200: {
+            "description": "Recognized document package",
+            "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}},
+        }
+    }
 
-    @app.post("/v1/parse", response_class=FileResponse, responses=zip_response,
-              summary="Recognize one document and return its complete output package")
+    @app.post(
+        "/v1/parse",
+        response_class=FileResponse,
+        responses=zip_response,
+        summary="Recognize one document and return its complete output package",
+    )
     def parse_sync(
         file: UploadFile = File(...),
         options: str | None = Form(default=None),
@@ -264,8 +363,12 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     ) -> FileResponse:
         return run_sync(file, options, x_api_key)
 
-    @app.post("/v1/recognize", response_class=FileResponse, responses=zip_response,
-              summary="Recognize documents and return a single ZIP with a manifest")
+    @app.post(
+        "/v1/recognize",
+        response_class=FileResponse,
+        responses=zip_response,
+        summary="Recognize documents and return a single ZIP with a manifest",
+    )
     def recognize(
         files: list[UploadFile] = File(..., description="One or more documents"),
         options: str | None = Form(default=None),
@@ -302,10 +405,14 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
                 for index, (upload, name) in enumerate(zip(files, names), start=1):
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
-                        raise HTTPException(status_code=504, detail={
-                            "message": "Batch timed out", "batch_id": batch_id,
-                            "documents": documents,
-                        })
+                        raise HTTPException(
+                            status_code=504,
+                            detail={
+                                "message": "Batch timed out",
+                                "batch_id": batch_id,
+                                "documents": documents,
+                            },
+                        )
                     entry = {"source_filename": name, "index": index}
                     try:
                         result = run_sync(upload, options, x_api_key, timeout=remaining)
@@ -313,34 +420,52 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
                         entry.update(status="failed", http_status=exc.status_code, error=exc.detail)
                         documents.append(entry)
                         if exc.status_code in {429, 503, 504}:
-                            raise HTTPException(status_code=exc.status_code, detail={
-                                "message": "Batch processing interrupted", "batch_id": batch_id,
-                                "documents": documents,
-                            }) from exc
+                            raise HTTPException(
+                                status_code=exc.status_code,
+                                detail={
+                                    "message": "Batch processing interrupted",
+                                    "batch_id": batch_id,
+                                    "documents": documents,
+                                },
+                            ) from exc
                         continue
                     folder = f"document_{index:03d}"
-                    entry.update(status="completed", job_id=result.headers["x-job-id"],
-                                 review_required=result.headers["x-review-required"] == "true",
-                                 directory=folder)
+                    entry.update(
+                        status="completed",
+                        job_id=result.headers["x-job-id"],
+                        review_required=result.headers["x-review-required"] == "true",
+                        directory=folder,
+                    )
                     with zipfile.ZipFile(result.path) as source:
                         for member in source.infolist():
                             if not member.is_dir():
-                                with source.open(member) as src, archive.open(
-                                    f"{folder}/{member.filename}", "w"
-                                ) as dst:
+                                with (
+                                    source.open(member) as src,
+                                    archive.open(f"{folder}/{member.filename}", "w") as dst,
+                                ):
                                     shutil.copyfileobj(src, dst, length=1024 * 1024)
                     documents.append(entry)
                 completed = sum(entry["status"] == "completed" for entry in documents)
                 if not completed:
-                    raise HTTPException(status_code=422, detail={
-                        "message": "No documents could be recognized", "documents": documents,
-                    })
-                manifest = {"batch_id": batch_id,
-                            "status": "completed" if completed == len(files) else "partial",
-                            "documents": documents}
-                archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+                    raise HTTPException(
+                        status_code=422,
+                        detail={
+                            "message": "No documents could be recognized",
+                            "documents": documents,
+                        },
+                    )
+                manifest = {
+                    "batch_id": batch_id,
+                    "status": "completed" if completed == len(files) else "partial",
+                    "documents": documents,
+                }
+                archive.writestr(
+                    "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)
+                )
             return FileResponse(
-                archive_path, media_type="application/zip", filename=f"{batch_id}.zip",
+                archive_path,
+                media_type="application/zip",
+                filename=f"{batch_id}.zip",
                 headers={"X-Batch-ID": batch_id, "X-Batch-Status": manifest["status"]},
                 background=BackgroundTask(shutil.rmtree, temporary, ignore_errors=True),
             )

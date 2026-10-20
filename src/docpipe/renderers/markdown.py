@@ -15,7 +15,11 @@ def render(document: Document, out: Path) -> Path:
         by_id = {b.id: b for b in page.blocks}
         for block in sorted(page.blocks, key=lambda item: item.order):
             if block.type == BlockType.FIGURE and block.figure:
-                alt = by_id.get(block.figure.caption_id).text if block.figure.caption_id in by_id else ""
+                alt = (
+                    by_id.get(block.figure.caption_id).text
+                    if block.figure.caption_id in by_id
+                    else ""
+                )
                 lines.append(f"![{alt or block.id}]({block.figure.file})")
                 if alt:
                     lines.append(f"*{alt}*")

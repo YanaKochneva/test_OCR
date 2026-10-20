@@ -1,0 +1,14 @@
+include README.md LICENSES.md requirements.txt constraints.txt Dockerfile .dockerignore
+include config.example.yaml .env.example
+recursive-include configs *.yaml Modelfile.*
+recursive-include deploy *.yml
+recursive-include docs *.md
+recursive-include scripts *.py
+recursive-include src/docpipe/assets *.ttf *.txt
+recursive-include src/docpipe/api/static *.html
+prune data
+prune reports
+prune models
+prune .qa-deps
+prune .test-deps
+global-exclude __pycache__ *.py[cod] *.log *.tmp

@@ -45,6 +45,7 @@ class Job:
     document_json: Path | None = None
     cancel_requested: bool = False
     review_required: bool = False
+    request_id: str | None = None
 
 
 class JobManager:
@@ -72,30 +73,39 @@ class JobManager:
 
     def _persist(self, job: Job) -> None:
         data = asdict(job)
-        for name in ('input_path', 'work_dir', 'result_zip', 'document_json'):
+        for name in ("input_path", "work_dir", "result_zip", "document_json"):
             if data[name] is not None:
                 data[name] = str(data[name])
-        temporary = job.work_dir / 'job.json.tmp'
-        temporary.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
-        temporary.replace(job.work_dir / 'job.json')
+        temporary = job.work_dir / "job.json.tmp"
+        temporary.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(job.work_dir / "job.json")
 
     def _restore_jobs(self) -> None:
-        for metadata in self.config.api.work_dir.glob('*/job.json'):
+        for metadata in self.config.api.work_dir.glob("*/job.json"):
             try:
-                data = json.loads(metadata.read_text(encoding='utf-8'))
-                for name in ('input_path', 'work_dir', 'result_zip', 'document_json'):
+                data = json.loads(metadata.read_text(encoding="utf-8"))
+                for name in ("input_path", "work_dir", "result_zip", "document_json"):
                     if data.get(name) is not None:
                         data[name] = Path(data[name])
                 job = Job(**data)
-                if job.status in {'queued', 'running'}:
-                    job.status = 'failed'
-                    job.error = 'Processing interrupted by service restart; submit again'
+                root = self.config.api.work_dir.resolve()
+                expected = metadata.parent.resolve()
+                if not expected.is_relative_to(root) or job.work_dir.resolve() != expected:
+                    raise ValueError("Job metadata points outside its job directory")
+                if not job.input_path.resolve().is_relative_to(root):
+                    raise ValueError("Job input points outside configured work directory")
+                for artifact in (job.result_zip, job.document_json):
+                    if artifact is not None and not artifact.resolve().is_relative_to(expected):
+                        raise ValueError("Job artifact points outside its job directory")
+                if job.status in {"queued", "running"}:
+                    job.status = "failed"
+                    job.error = "Processing interrupted by service restart; submit again"
                     job.finished_at = time.time()
                     job.input_path.unlink(missing_ok=True)
                     self._persist(job)
                 self._jobs[job.id] = job
             except Exception:
-                logger.exception('Cannot restore job metadata %s', metadata)
+                logger.exception("Cannot restore job metadata %s", metadata)
         self.cleanup_ttl()
 
     def _increment_metric(self, name: str) -> None:
@@ -103,9 +113,9 @@ class JobManager:
             self.metrics[name] = self.metrics.get(name, 0) + 1
 
     def start(self) -> None:
+        """Start workers and load the configured engine before accepting requests."""
         if self._started:
             return
-        """Запустить workers и загрузить настроенный движок до первого запроса."""
         self._stop.clear()
         self._restore_jobs()
         default_engine = self.config.api.default_engine
@@ -114,7 +124,9 @@ class JobManager:
             t = threading.Thread(target=self._worker, name=f"docpipe-worker-{i}", daemon=True)
             t.start()
             self._workers.append(t)
-        self._janitor = threading.Thread(target=self._janitor_loop, name="docpipe-janitor", daemon=True)
+        self._janitor = threading.Thread(
+            target=self._janitor_loop, name="docpipe-janitor", daemon=True
+        )
         self._janitor.start()
         self.ready = True
         self._started = True
@@ -124,8 +136,9 @@ class JobManager:
             self.ready = False
             self._stop.set()
         self._cancel_queued_jobs()
-        for t in self._workers:
-            t.join(timeout=self.config.api.shutdown_timeout_seconds)
+        deadline = time.monotonic() + self.config.api.shutdown_timeout_seconds
+        for worker in self._workers:
+            worker.join(timeout=max(0.0, deadline - time.monotonic()))
         if self._janitor:
             self._janitor.join(timeout=2)
         if all(not worker.is_alive() for worker in self._workers):
@@ -162,14 +175,16 @@ class JobManager:
                 self._engine_locks[name] = threading.Lock()
             return engine
 
-    def submit(self, input_path: Path, engine: str, outputs: list[str]) -> Job:
+    def submit(
+        self, input_path: Path, engine: str, outputs: list[str], request_id: str | None = None
+    ) -> Job:
         with self._lock:
             if not self.ready:
                 raise RuntimeError("job manager is not accepting work")
         job_id = uuid.uuid4().hex
         work_dir = self.config.api.work_dir / job_id
         work_dir.mkdir(parents=True, exist_ok=False)
-        job = Job(job_id, input_path, work_dir, engine, outputs)
+        job = Job(job_id, input_path, work_dir, engine, outputs, request_id=request_id)
         with self._lock:
             if len(self._jobs) >= self.config.api.max_jobs:
                 shutil.rmtree(work_dir, ignore_errors=True)
@@ -270,34 +285,53 @@ class JobManager:
             json_path.write_text(doc.model_dump_json(indent=2), encoding="utf-8")
             job.document_json = json_path
             from docpipe.stages.image_fallback import has_fallback
+
             if job.engine != "fake" and recognized_text_chars(doc) == 0 and not has_fallback(doc):
-                reasons = [f"Страница {page.index + 1}: {warning}"
-                           for page in doc.pages for warning in page.warnings]
+                reasons = [
+                    f"Страница {page.index + 1}: {warning}"
+                    for page in doc.pages
+                    for warning in page.warnings
+                ]
                 detail = "; ".join(reasons[:3]) or (
                     "Движок вернул только изображения или пустые текстовые области. "
                     "Проверьте журнал сервера распознавания."
                 )
-                raise OutputQualityError(
-                    f"Движок {job.engine} не вернул текст. {detail}"
-                )
-            doc=self._render_outputs(doc, job, out)
+                raise OutputQualityError(f"Движок {job.engine} не вернул текст. {detail}")
+            doc = self._render_outputs(doc, job, out)
             from docpipe.review import review_after_render
-            post_review=review_after_render(doc,self.config,out)
-            pre_path=out/'review-before.json'
-            pre_review=json.loads(pre_path.read_text(encoding='utf-8')) if pre_path.exists() else {'review_required':False}
+
+            post_review = review_after_render(doc, self.config, out)
+            pre_path = out / "review-before.json"
+            pre_review = (
+                json.loads(pre_path.read_text(encoding="utf-8"))
+                if pre_path.exists()
+                else {"review_required": False}
+            )
             from docpipe.style_review import write_style_review
-            job.review_required=(write_style_review(doc,out)['review_required']
-                or pre_review['review_required'] or post_review['review_required'])
+
+            job.review_required = (
+                write_style_review(doc, out)["review_required"]
+                or pre_review["review_required"]
+                or post_review["review_required"]
+            )
+            ocr_path = out / "review" / "issues.json"
+            if ocr_path.exists():
+                job.review_required = (
+                    job.review_required
+                    or json.loads(ocr_path.read_text("utf-8"))["review_required"]
+                )
             verification = verify_document(out)
-            if any(check["check"] == "figure_pictogram_overlap" and check["status"] == "WARN"
-                   for check in verification["checks"]):
+            if any(
+                check["check"] == "figure_pictogram_overlap" and check["status"] == "WARN"
+                for check in verification["checks"]
+            ):
                 job.review_required = True
             (out / "verification.json").write_text(
                 json.dumps(verification, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
             metrics = document_metrics(doc)
-            metrics['review_required']=job.review_required
+            metrics["review_required"] = job.review_required
             metrics["verification"] = verification["result"]
             (out / "metrics.json").write_text(
                 json.dumps(metrics, ensure_ascii=False, indent=2) + "\n",
@@ -305,13 +339,9 @@ class JobManager:
             )
             if not verification["ok"]:
                 failed_checks = [
-                    check["check"]
-                    for check in verification["checks"]
-                    if check["status"] == "FAIL"
+                    check["check"] for check in verification["checks"] if check["status"] == "FAIL"
                 ]
-                raise OutputQualityError(
-                    "Output verification failed: " + ", ".join(failed_checks)
-                )
+                raise OutputQualityError("Output verification failed: " + ", ".join(failed_checks))
             zip_path = job.work_dir / f"{job.id}.zip"
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for p in out.rglob("*"):
@@ -342,15 +372,17 @@ class JobManager:
     def _progress(job: Job, current: int, total: int) -> None:
         job.pages_total = total
         # OCR completion is followed by review, rendering, checks and packaging.
-        job.progress = min(90,int(current * 90 / total)) if total else 0
+        job.progress = min(90, int(current * 90 / total)) if total else 0
 
     def _render_outputs(self, doc, job: Job, out: Path):
         from docpipe.output import render_bundle
-        return render_bundle(doc,self.config,out,job.outputs,job.input_path)
+
+        return render_bundle(doc, self.config, out, job.outputs, job.input_path)
 
     def status(self, job: Job) -> dict:
         return {
             "job_id": job.id,
+            "request_id": job.request_id,
             "status": job.status,
             "progress": job.progress,
             "pages_total": job.pages_total,
@@ -359,4 +391,12 @@ class JobManager:
             "created_at": job.created_at,
             "started_at": job.started_at,
             "finished_at": job.finished_at,
+            "expires_at": (
+                job.finished_at + self.config.api.result_ttl_seconds if job.finished_at else None
+            ),
+            "links": {
+                "status": f"/v1/jobs/{job.id}",
+                "document": f"/v1/jobs/{job.id}/document",
+                "result": f"/v1/jobs/{job.id}/result",
+            },
         }

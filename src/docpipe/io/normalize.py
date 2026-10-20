@@ -46,6 +46,7 @@ def normalize_input(path: Path, config: AppConfig) -> Path:
     except ImportError as exc:
         raise InputError("Для преобразования изображения нужен пакет img2pdf") from exc
     from tempfile import NamedTemporaryFile
+
     tmp = NamedTemporaryFile(suffix=".pdf", delete=False)
     tmp.close()
     try:

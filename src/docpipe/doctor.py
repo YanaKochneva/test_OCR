@@ -29,7 +29,19 @@ def _pkg(name: str) -> dict:
 
 
 def run_doctor(config: AppConfig) -> dict:
-    packages = [_pkg(x) for x in ("pydantic", "pydantic-settings", "PyYAML", "pypdfium2", "Pillow", "numpy", "fastapi", "uvicorn")]
+    packages = [
+        _pkg(x)
+        for x in (
+            "pydantic",
+            "pydantic-settings",
+            "PyYAML",
+            "pypdfium2",
+            "Pillow",
+            "numpy",
+            "fastapi",
+            "uvicorn",
+        )
+    ]
     checks: list[dict] = []
 
     def add(name: str, status: str, detail: str) -> None:
@@ -53,12 +65,20 @@ def run_doctor(config: AppConfig) -> dict:
     # OCR engines (optional): проверяем только наличие модуля, без загрузки моделей.
     for module, engine in (("docling", "docling"),):
         present = importlib.util.find_spec(module) is not None
-        add(f"ocr_backend:{engine}", "PASS" if present else "WARN",
-            "installed" if present else "optional dependency not installed")
+        add(
+            f"ocr_backend:{engine}",
+            "PASS" if present else "WARN",
+            "installed" if present else "optional dependency not installed",
+        )
     # Шрифты с кириллицей
     from docpipe.renderers.fonts import find_font
+
     font_path = find_font()
-    add("font:cyrillic", "PASS" if font_path else "FAIL", str(font_path) if font_path else "DejaVu Sans не найден")
+    add(
+        "font:cyrillic",
+        "PASS" if font_path else "FAIL",
+        str(font_path) if font_path else "DejaVu Sans не найден",
+    )
     # Директории
     try:
         config.api.work_dir.mkdir(parents=True, exist_ok=True)
@@ -72,7 +92,9 @@ def run_doctor(config: AppConfig) -> dict:
     add(
         "api_auth",
         "PASS" if config.api.api_key else "WARN",
-        "API key configured" if config.api.api_key else "API key is unset; API endpoints accept unauthenticated requests",
+        "API key configured"
+        if config.api.api_key
+        else "API key is unset; API endpoints accept unauthenticated requests",
     )
 
     failed = any(c["status"] == "FAIL" for c in checks)

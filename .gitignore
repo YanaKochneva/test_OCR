@@ -1,17 +1,43 @@
+# Local environments and supplemental dependencies
 .venv/
+venv/
 .qa-deps/
+.test-deps/
+
+# Python and tool caches
 __pycache__/
-*.pyc
+*.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Build artifacts
 dist/
 build/
 *.egg-info/
-reports/
+
+# Local runtime data, models and generated reports
 data/
 models/
+reports/
+*.log
+*.log.*
+*.tmp
+*.temp
+*.bak
 
+# Local configuration and credentials
 .env
 .env.*
 !.env.example
+
+# Editor and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini

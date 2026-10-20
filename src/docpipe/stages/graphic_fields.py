@@ -1,80 +1,124 @@
 """Retain thin blank-field rules as individual image assets."""
+
 import cv2
 import numpy as np
+
 from docpipe.ir import BBox, Block, BlockType, FigureData
 
 
 def retain_graphic_fields(blocks, image, meta):
     sx, sy = image.width / meta.width_pt, image.height / meta.height_pt
     # Some scans encode pixel dimensions as PDF points; use relative page scale.
-    minimum = max(25, round(image.width * .018))
+    minimum = max(25, round(image.width * 0.018))
     output = list(blocks)
     seen = set()
     regions = [(cell.bbox, True) for block in blocks if block.table for cell in block.table.cells]
     regions.append((BBox(x0=0, y0=0, x1=meta.width_pt, y1=meta.height_pt), False))
     for box, is_cell in regions:
-        left, top = max(0, round(box.x0*sx)+4), max(0, round(box.y0*sy)+4)
-        right, bottom = min(image.width, round(box.x1*sx)-4), min(image.height, round(box.y1*sy)-4)
+        left, top = max(0, round(box.x0 * sx) + 4), max(0, round(box.y0 * sy) + 4)
+        right, bottom = (
+            min(image.width, round(box.x1 * sx) - 4),
+            min(image.height, round(box.y1 * sy) - 4),
+        )
         if right <= left or bottom <= top:
             continue
         with image.crop((left, top, right, bottom)) as crop:
-            ink = (np.asarray(crop.convert('L')) < 150).astype('uint8')
+            ink = (np.asarray(crop.convert("L")) < 150).astype("uint8")
         if not is_cell:
             # Table grids and already segmented pictures have their own export.
             for block in blocks:
                 if block.table or block.figure:
                     b = block.bbox
-                    x0, y0 = max(0,round(b.x0*sx)-left-3), max(0,round(b.y0*sy)-top-3)
-                    x1, y1 = min(ink.shape[1],round(b.x1*sx)-left+3), min(ink.shape[0],round(b.y1*sy)-top+3)
-                    ink[y0:y1,x0:x1] = 0
+                    x0, y0 = max(0, round(b.x0 * sx) - left - 3), max(0, round(b.y0 * sy) - top - 3)
+                    x1, y1 = (
+                        min(ink.shape[1], round(b.x1 * sx) - left + 3),
+                        min(ink.shape[0], round(b.y1 * sy) - top + 3),
+                    )
+                    ink[y0:y1, x0:x1] = 0
         rules = cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones((1, minimum), np.uint8))
         contours, _ = cv2.findContours(rules, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
-            if is_cell and (y<3 or y+h>ink.shape[0]-3):
+            if is_cell and (y < 3 or y + h > ink.shape[0] - 3):
                 continue  # Broken grid fragments near the cell's edges.
-            if w < minimum or h > max(3, round(image.height*.0015)) or w/h < 15:
+            if w < minimum or h > max(3, round(image.height * 0.0015)) or w / h < 15:
                 continue
             # Grid borders cross most of a cell and reach its edges.
-            if w >= .9*(right-left) or x <= 1 or x+w >= right-left-1:
+            if w >= 0.9 * (right - left) or x <= 1 or x + w >= right - left - 1:
                 continue
-            key = (left+int(x), top+int(y), int(w), int(h))
+            key = (left + int(x), top + int(y), int(w), int(h))
             if key in seen:
                 continue
             seen.add(key)
             px, py, w, h = key
-            output.append(Block(id=f'p{meta.index}-graphic-field-{len(seen)}',
-                type=BlockType.FIGURE, order=len(output), source_label='graphic_field',
-                bbox=BBox(x0=(px-1)/sx, y0=(py-1)/sy, x1=(px+w+1)/sx, y1=(py+h+1)/sy),
-                figure=FigureData(file='', format='png', width_px=w+2, height_px=h+2)))
-    fields = [b.bbox for b in output if b.source_label=='graphic_field']
+            output.append(
+                Block(
+                    id=f"p{meta.index}-graphic-field-{len(seen)}",
+                    type=BlockType.FIGURE,
+                    order=len(output),
+                    source_label="graphic_field",
+                    bbox=BBox(
+                        x0=(px - 1) / sx,
+                        y0=(py - 1) / sy,
+                        x1=(px + w + 1) / sx,
+                        y1=(py + h + 1) / sy,
+                    ),
+                    figure=FigureData(file="", format="png", width_px=w + 2, height_px=h + 2),
+                )
+            )
+    fields = [b.bbox for b in output if b.source_label == "graphic_field"]
+
     def reserve_gaps(lines):
         from docpipe.stages.table_visual_layout import split_at_visual_lines
-        result=[]
+
+        result = []
         for line in lines or []:
-            b=line.bbox
-            gaps=sorted([(g.x0,g.x1) for g in fields if b.x0<g.x0<g.x1<b.x1
-                         and b.y0<=g.y0<=b.y1+3/sy])
+            b = line.bbox
+            gaps = sorted(
+                [
+                    (g.x0, g.x1)
+                    for g in fields
+                    if b.x0 < g.x0 < g.x1 < b.x1 and b.y0 <= g.y0 <= b.y1 + 3 / sy
+                ]
+            )
             if not gaps:
-                result.append(line);continue
-            spans=[];start=b.x0
-            for left,right in gaps:
-                if left>start:spans.append((start,left))
-                start=max(start,right)
-            if start<b.x1:spans.append((start,b.x1))
-            chunks=split_at_visual_lines(line.text,[right-left for left,right in spans])
+                result.append(line)
+                continue
+            spans = []
+            start = b.x0
+            for left, right in gaps:
+                if left > start:
+                    spans.append((start, left))
+                start = max(start, right)
+            if start < b.x1:
+                spans.append((start, b.x1))
+            chunks = split_at_visual_lines(line.text, [right - left for left, right in spans])
             if chunks:
-                runs=[line.model_copy(update={'text':text,'runs':None,
-                    'bbox':BBox(x0=left,y0=b.y0,x1=right,y1=b.y1)})
-                    for text,(left,right) in zip(chunks,spans)]
-                line=line.model_copy(update={'runs':runs})
+                runs = [
+                    line.model_copy(
+                        update={
+                            "text": text,
+                            "runs": None,
+                            "bbox": BBox(x0=left, y0=b.y0, x1=right, y1=b.y1),
+                        }
+                    )
+                    for text, (left, right) in zip(chunks, spans)
+                ]
+                line = line.model_copy(update={"runs": runs})
             result.append(line)
         return result or None
-    positioned=[]
+
+    positioned = []
     for block in output:
-        update={'lines':reserve_gaps(block.lines)}
+        update = {"lines": reserve_gaps(block.lines)}
         if block.table:
-            update['table']=block.table.model_copy(update={'cells':[
-                cell.model_copy(update={'lines':reserve_gaps(cell.lines)}) for cell in block.table.cells]})
+            update["table"] = block.table.model_copy(
+                update={
+                    "cells": [
+                        cell.model_copy(update={"lines": reserve_gaps(cell.lines)})
+                        for cell in block.table.cells
+                    ]
+                }
+            )
         positioned.append(block.model_copy(update=update))
     return positioned

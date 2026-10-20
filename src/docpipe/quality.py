@@ -17,10 +17,12 @@ def recognized_text_chars(doc: Document) -> int:
 
 def document_metrics(doc: Document) -> dict:
     from docpipe.style_review import review_items
-    pending=review_items(doc)
-    block_counts = Counter(
-        block.type.value for page in doc.pages for block in page.blocks
-    )
+
+    pending = review_items(doc)
+    from docpipe.ocr_issues import collect_issues
+
+    ocr_pending = [i for i in collect_issues(doc) if i["severity"] != "info"]
+    block_counts = Counter(block.type.value for page in doc.pages for block in page.blocks)
     return {
         "engine": doc.engine.name,
         "engine_version": doc.engine.version,
@@ -33,7 +35,10 @@ def document_metrics(doc: Document) -> dict:
         "tables": block_counts.get(BlockType.TABLE.value, 0),
         "figures": block_counts.get(BlockType.FIGURE.value, 0),
         "parse_seconds": doc.timings.get("parse_total"),
-        "review_required": bool(pending) or any(b.source_label=='ocr_image_fallback' for p in doc.pages for b in p.blocks),
+        "ocr_review_fragments": len(ocr_pending),
+        "review_required": bool(ocr_pending)
+        or bool(pending)
+        or any(b.source_label == "ocr_image_fallback" for p in doc.pages for b in p.blocks),
         "typography_review_fragments": len(pending),
         "cer": None,
         "wer": None,

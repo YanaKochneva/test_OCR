@@ -6,6 +6,7 @@ from typing import Any
 
 from docpipe.ir import Block
 
+
 @dataclass(frozen=True)
 class PageMeta:
     index: int
@@ -13,6 +14,7 @@ class PageMeta:
     height_pt: float
     rotation: int
     dpi: int
+
 
 class LayoutOcrEngine(ABC):
     name: str = "unknown"
@@ -26,4 +28,5 @@ class LayoutOcrEngine(ABC):
 
     def info(self):
         from docpipe.ir import EngineInfo
+
         return EngineInfo(name=self.name, version=self.version)

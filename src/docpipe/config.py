@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
 class LimitsConfig(BaseModel):
@@ -18,7 +18,7 @@ class LimitsConfig(BaseModel):
 
 class TextLayerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    expected_scripts: list[str] = ["cyrillic", "latin"]
+    expected_scripts: list[str] = Field(default_factory=lambda: ["cyrillic", "latin"])
     min_text_length: int = Field(default=20, ge=0)
     min_expected_script_ratio: float = Field(default=0.35, ge=0, le=1)
     max_control_ratio: float = Field(default=0.05, ge=0, le=1)
@@ -45,17 +45,21 @@ class RenderConfig(BaseModel):
     correct_page_orientation: bool = True
     docx_enabled: bool = False
     unreadable_as_image: bool = True
-    unreadable_min_confidence: float = Field(default=0.7,ge=0,le=1)
+    unreadable_min_confidence: float = Field(default=0.7, ge=0, le=1)
 
 
 class ReviewConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    company_domains: list[str] = ["polyus.com"]
+    company_domains: list[str] = Field(default_factory=lambda: ["polyus.com"])
     llm_enabled: bool = False
-    provider: Literal['aitunnel'] = 'aitunnel'
-    api_model: str = 'gpt-4.1-mini'
+    provider: Literal["aitunnel", "ollama"] = "aitunnel"
+    ollama_url: str = "http://127.0.0.1:11434"
+    ollama_mode: Literal["reread", "structured"] = "reread"
+    reread_dpi: int = Field(default=220, ge=150, le=400)
+    reread_min_chars: int = Field(default=20, ge=1, le=500)
+    api_model: str = "gpt-4.1-mini"
     timeout_seconds: int = Field(default=45, ge=1, le=300)
-    max_calls: int = Field(default=40, ge=2, le=200)
+    max_calls: int = Field(default=40, ge=2, le=600)
     batch_chars: int = Field(default=10000, ge=200, le=12000)
     stage_timeout_seconds: int = Field(default=180, ge=1, le=900)
     visual_enabled: bool = False
@@ -82,35 +86,51 @@ class ApiConfig(BaseModel):
     require_api_key: bool = False
     api_key: str | None = Field(default=None, min_length=32)
 
+    @model_validator(mode="after")
+    def validate_authentication(self) -> "ApiConfig":
+        if self.require_api_key and not self.api_key:
+            raise ValueError("api_key is required when require_api_key is enabled")
+        return self
+
 
 class AppConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="DOCPIPE_", env_nested_delimiter="__", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="DOCPIPE_", env_nested_delimiter="__", extra="forbid"
+    )
     force_ocr: Literal["auto", "always", "never"] = "auto"
     default_dpi: int = Field(default=300, gt=0)
     profile: Literal["fast", "balanced", "accurate"] = "balanced"
     gpu: bool | None = None
     offline: bool = True
-    limits: LimitsConfig = LimitsConfig()
-    text_layer: TextLayerConfig = TextLayerConfig()
-    figures: FigureConfig = FigureConfig()
-    render: RenderConfig = RenderConfig()
-    review: ReviewConfig = ReviewConfig()
+    limits: LimitsConfig = Field(default_factory=LimitsConfig)
+    text_layer: TextLayerConfig = Field(default_factory=TextLayerConfig)
+    figures: FigureConfig = Field(default_factory=FigureConfig)
+    render: RenderConfig = Field(default_factory=RenderConfig)
+    review: ReviewConfig = Field(default_factory=ReviewConfig)
     debug: bool = False
-    api: ApiConfig = ApiConfig()
+    api: ApiConfig = Field(default_factory=ApiConfig)
+
+
+class _EnvironmentFirstConfig(AppConfig):
+    """Validate YAML and environment together, with environment taking priority."""
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return env_settings, init_settings, dotenv_settings, file_secret_settings
 
 
 def load_config(path: Path | None = None) -> AppConfig:
-    """Загрузить YAML и наложить переменные окружения через pydantic-settings."""
+    """Load YAML and environment, then validate the combined configuration once."""
     if path is None:
         return AppConfig()
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(raw, dict):
         raise ValueError("Корень YAML-конфига должен быть объектом")
-    def merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
-        result=dict(base)
-        for key,value in overrides.items():
-            result[key]=(merge(result[key],value) if isinstance(value,dict)
-                         and isinstance(result.get(key),dict) else value)
-        return result
-    # Explicit environment settings must override YAML, including nested fields.
-    return AppConfig(**merge(raw,AppConfig().model_dump(exclude_unset=True)))
+    return _EnvironmentFirstConfig(**raw)

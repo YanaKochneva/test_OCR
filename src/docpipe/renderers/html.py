@@ -76,22 +76,36 @@ def _table_markup(block: Block, top: float | None = None) -> str:
                 )
             rowspan = f' rowspan="{cell.rowspan}"' if cell.rowspan > 1 else ""
             colspan = f' colspan="{cell.colspan}"' if cell.colspan > 1 else ""
-            source=next((c for c in block.table.cells if (c.row,c.col)==(cell.row,cell.col)),None)
-            size=(source.lines[0].font_size_pt if source and source.lines else TABLE_FONT_PT)
-            content=escape(cell.text)
-            normalize=lambda value: ''.join(value.split())
-            if (source and source.lines and
-                    normalize(''.join(line.text for line in source.lines))==normalize(cell.text)):
-                height=max(1,sum(layout.row_heights[cell.row:cell.row+cell.rowspan])-3)
-                fragments=[]
+            source = next(
+                (c for c in block.table.cells if (c.row, c.col) == (cell.row, cell.col)), None
+            )
+            size = source.lines[0].font_size_pt if source and source.lines else TABLE_FONT_PT
+            content = escape(cell.text)
+
+            def normalize(value):
+                return "".join(value.split())
+
+            if (
+                source
+                and source.lines
+                and normalize("".join(line.text for line in source.lines)) == normalize(cell.text)
+            ):
+                height = max(1, sum(layout.row_heights[cell.row : cell.row + cell.rowspan]) - 3)
+                fragments = []
                 for line in source.lines:
-                    left=max(0,line.bbox.x0-source.bbox.x0-2)
-                    top=max(0,line.bbox.y0-source.bbox.y0-1-size*.2)
-                    scale=(line.horizontal_scale_pct or 100)/100
-                    fragments.append(f'<span style="position:absolute;left:{left:.3f}pt;top:{top:.3f}pt;'
-                        f'font-size:{size:.2f}pt;line-height:1;white-space:pre;transform-origin:top left;'
-                        f'transform:scaleX({scale:.5f})">{escape(line.text)}</span>')
-                content=f'<div style="position:relative;height:{height:.3f}pt">'+''.join(fragments)+'</div>'
+                    left = max(0, line.bbox.x0 - source.bbox.x0 - 2)
+                    top = max(0, line.bbox.y0 - source.bbox.y0 - 1 - size * 0.2)
+                    scale = (line.horizontal_scale_pct or 100) / 100
+                    fragments.append(
+                        f'<span style="position:absolute;left:{left:.3f}pt;top:{top:.3f}pt;'
+                        f"font-size:{size:.2f}pt;line-height:1;white-space:pre;transform-origin:top left;"
+                        f'transform:scaleX({scale:.5f})">{escape(line.text)}</span>'
+                    )
+                content = (
+                    f'<div style="position:relative;height:{height:.3f}pt">'
+                    + "".join(fragments)
+                    + "</div>"
+                )
             output.append(f'<td{rowspan}{colspan} style="font-size:{size:.2f}pt">{content}</td>')
             col += cell.colspan
         output.append("</tr>")
@@ -109,6 +123,7 @@ def render(
     out.parent.mkdir(parents=True, exist_ok=True)
     from docpipe.renderers.fixed_layout import stable_document
     from docpipe.renderers.page_size import a4_document
+
     document = stable_document(a4_document(document))
     image_root = base_dir or out.parent
     body: list[str] = ['<main id="document">']
@@ -146,7 +161,8 @@ def render(
         body.append("</section>")
     body.append("</main>")
     family = f'{FONT_FAMILY}, "DejaVu Sans", sans-serif'
-    html = f"""<!doctype html>
+    html = (
+        f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Docpipe</title><style>
 *{{box-sizing:border-box}}html,body{{margin:0;padding:0;background:#e9ece9;color:#151515}}
@@ -159,6 +175,9 @@ def render(
 .table-block{{width:100%;height:100%;table-layout:fixed;border-collapse:collapse;line-height:1;background:#fff}}
 .table-block td{{border:.5pt solid #333;padding:1.5pt 2pt;vertical-align:top;white-space:pre-wrap;overflow-wrap:anywhere}}
 @media print{{@page{{margin:0}}html,body{{background:#fff}}#document{{margin:0}}.page{{margin:0;box-shadow:none}}}}
-</style></head><body>""" + "".join(body) + "</body></html>"
+</style></head><body>"""
+        + "".join(body)
+        + "</body></html>"
+    )
     out.write_text(html, encoding="utf-8")
     return out

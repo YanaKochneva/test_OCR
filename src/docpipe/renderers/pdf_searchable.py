@@ -1,4 +1,5 @@
 """Compatibility entry point for a reconstructed, searchable PDF."""
+
 from pathlib import Path
 
 from docpipe.ir import Document

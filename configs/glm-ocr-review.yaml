@@ -1,0 +1,17 @@
+offline: true
+render:
+  docx_enabled: false
+  unreadable_as_image: true
+review:
+  llm_enabled: true
+  provider: ollama
+  api_model: docpipe-glm-ocr:latest
+  ollama_mode: reread
+  ollama_url: http://127.0.0.1:11434
+  timeout_seconds: 120
+  stage_timeout_seconds: 900
+  max_calls: 300
+  visual_enabled: false
+  visual_max_pages: 20
+  visual_max_calls: 40
+  visual_timeout_seconds: 900

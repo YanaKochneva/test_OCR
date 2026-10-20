@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable
 from functools import lru_cache
 from pathlib import Path
-import re
 
 from PIL import ImageFont
 
@@ -28,7 +28,8 @@ def collision_free_text_tops(
     result: dict[int, float] = {}
     text_blocks = sorted(
         (
-            block for block in blocks
+            block
+            for block in blocks
             if (block.text and block.type != BlockType.FIGURE) or block.table
         ),
         key=lambda block: (block.bbox.y0, block.bbox.x0, block.order),
@@ -51,12 +52,11 @@ def collision_free_text_tops(
         # Match the explicit line breaks emitted by HTML and Word. The old
         # character-count estimate undercounted wide glyphs and missed lines
         # that Word/Chromium wrapped in practice.
-        visual_height = estimate_text_height(
-            text, width, (size, bold, italic), font_metric_mode
-        )
+        visual_height = estimate_text_height(text, width, (size, bold, italic), font_metric_mode)
         visual_width = max(1.0, min(width, max_visual_width))
         if block.type == BlockType.TABLE and block.table:
             from docpipe.renderers.table_layout import build_table_layout
+
             visual_height = sum(build_table_layout(block).row_heights)
             visual_width = width
         if height_for is not None:
@@ -68,8 +68,12 @@ def collision_free_text_tops(
         while True:
             next_top = top
             for previous_left, previous_right, previous_top, previous_bottom in placed:
-                horizontal_overlap = min(box.x0 + visual_width, previous_right) - max(box.x0, previous_left)
-                vertical_overlap = min(top + visual_height, previous_bottom) - max(top, previous_top)
+                horizontal_overlap = min(box.x0 + visual_width, previous_right) - max(
+                    box.x0, previous_left
+                )
+                vertical_overlap = min(top + visual_height, previous_bottom) - max(
+                    top, previous_top
+                )
                 if horizontal_overlap > 0.5 and vertical_overlap > 0:
                     next_top = max(next_top, previous_bottom + gap_pt)
             if next_top == top:
@@ -83,7 +87,9 @@ def collision_free_text_tops(
 
 
 @lru_cache(maxsize=256)
-def _fonts(size_px: int, bold: bool, italic: bool, font_metric_mode: str) -> tuple[ImageFont.FreeTypeFont, ...]:
+def _fonts(
+    size_px: int, bold: bool, italic: bool, font_metric_mode: str
+) -> tuple[ImageFont.FreeTypeFont, ...]:
     font_dir = Path(__file__).resolve().parents[1] / "assets" / "fonts"
     if bold and italic:
         arial_name, dejavu_name = "arialbi.ttf", "DejaVuSans-Bold.ttf"
@@ -124,10 +130,13 @@ def _measure(text: str, fonts: tuple[ImageFont.FreeTypeFont, ...]) -> float:
 def _glyph_height(text: str, fonts: tuple[ImageFont.FreeTypeFont, ...]) -> float:
     if not text:
         return 1.0
-    return max(
-        (float(font.getbbox(text)[3] - font.getbbox(text)[1]) for font in fonts),
-        default=1.0,
-    ) * 0.75
+    return (
+        max(
+            (float(font.getbbox(text)[3] - font.getbbox(text)[1]) for font in fonts),
+            default=1.0,
+        )
+        * 0.75
+    )
 
 
 def wrap_text(

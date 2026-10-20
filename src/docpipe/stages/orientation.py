@@ -1,4 +1,5 @@
 """Conservative quarter-turn correction, confirmed by image-only OCR."""
+
 from __future__ import annotations
 
 from dataclasses import replace
@@ -13,15 +14,15 @@ from docpipe.render.raster import RasterPage
 
 def sideways_text_candidate(image: Image.Image) -> bool:
     """Gate orientation trials using text-band projections, excluding rules."""
-    preview = image.convert('L').copy()
+    preview = image.convert("L").copy()
     preview.thumbnail((1200, 1200))
-    ink = (np.asarray(preview) < 170).astype('uint8')
+    ink = (np.asarray(preview) < 170).astype("uint8")
     _, _, stats, _ = cv2.connectedComponentsWithStats(ink, 8)
     glyphs = 0
     for _, _, width, height, area in stats[1:]:
         if 5 <= width <= 60 and 5 <= height <= 60 and area >= 20:
             ratio = width / height
-            if .2 <= ratio <= 5:
+            if 0.2 <= ratio <= 5:
                 glyphs += 1
     if glyphs < 80:
         return False
@@ -53,8 +54,11 @@ def correct_orientation(raster: RasterPage, get_reader: Callable) -> RasterPage:
         result = reader(image, use_det=True, use_cls=False)
         if result.txts is None or result.scores is None:
             return 0.0
-        return sum(len(text.strip()) * confidence for text, confidence in zip(result.txts, result.scores)
-                   if confidence >= .9)
+        return sum(
+            len(text.strip()) * confidence
+            for text, confidence in zip(result.txts, result.scores)
+            if confidence >= 0.9
+        )
 
     base = score(preview)
     trials = [(score(preview.rotate(angle, expand=True)), angle) for angle in (90, 270)]
@@ -64,6 +68,10 @@ def correct_orientation(raster: RasterPage, get_reader: Callable) -> RasterPage:
         return raster
     # PIL positive angles turn counterclockwise; PDF /Rotate is clockwise.
     correction = (360 - angle) % 360
-    return replace(raster, image=raster.image.rotate(angle, expand=True),
-                   width_pt=raster.height_pt, height_pt=raster.width_pt,
-                   rotation=(raster.rotation + correction) % 360)
+    return replace(
+        raster,
+        image=raster.image.rotate(angle, expand=True),
+        width_pt=raster.height_pt,
+        height_pt=raster.width_pt,
+        rotation=(raster.rotation + correction) % 360,
+    )

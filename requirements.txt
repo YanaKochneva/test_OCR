@@ -1,0 +1,3 @@
+# Dependencies are maintained in pyproject.toml; constraints apply to transitive dependencies.
+-c constraints.txt
+.[docling,glm-review]

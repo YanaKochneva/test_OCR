@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from statistics import median
 
-from docpipe.ir import Block, BBox
+from docpipe.ir import BBox, Block
 
 
 @dataclass(frozen=True)
@@ -26,8 +26,13 @@ class TableLayout:
     cells: list[CellPlacement]
 
 
-def build_table_layout(block: Block, *, font_size_pt: float | None = None,
-                       full_line_boxes: bool = False, preserve_geometry: bool = False) -> TableLayout:
+def build_table_layout(
+    block: Block,
+    *,
+    font_size_pt: float | None = None,
+    full_line_boxes: bool = False,
+    preserve_geometry: bool = False,
+) -> TableLayout:
     """Build a rectangular grid while retaining recognized spans and geometry."""
     if block.table is None:
         raise ValueError("table layout requires a table block")
@@ -53,21 +58,23 @@ def build_table_layout(block: Block, *, font_size_pt: float | None = None,
         colspan = min(cell.colspan, cols - col)
         if rowspan <= 0 or colspan <= 0:
             continue
-        if (row,col) in occupied:
+        if (row, col) in occupied:
             # OCR can emit a merged placeholder and a separate populated cell
             # for the same grid position. Never discard that populated payload.
-            owner=owners[(row,col)]
-            previous=placements[owner]
-            text=cell.text.strip()
+            owner = owners[(row, col)]
+            previous = placements[owner]
+            text = cell.text.strip()
             if text and text not in previous.text.splitlines():
-                placements[owner]=replace(previous,text='\n'.join(t for t in (previous.text,text) if t))
+                placements[owner] = replace(
+                    previous, text="\n".join(t for t in (previous.text, text) if t)
+                )
             continue
         placement = CellPlacement(row, col, rowspan, colspan, cell.text)
         placements.append(placement)
         for covered_row in range(row, row + rowspan):
             for covered_col in range(col, col + colspan):
                 occupied.add((covered_row, covered_col))
-                owners[(covered_row,covered_col)]=len(placements)-1
+                owners[(covered_row, covered_col)] = len(placements) - 1
 
     # An engine can report table text without usable cell coordinates. Keep the
     # text visible inside a real one-cell table rather than dropping it.
@@ -106,38 +113,63 @@ def build_table_layout(block: Block, *, font_size_pt: float | None = None,
         # Pixel-verified cells contain complete rectangles rather than glyph
         # boxes. Use their actual separator coordinates, including merged spans.
         def edges(count, first, last, start_name, end_name, offset_name, span_name):
-            samples=[[] for _ in range(count+1)]
+            samples = [[] for _ in range(count + 1)]
             for cell in source_cells:
-                start=getattr(cell,offset_name);end=start+getattr(cell,span_name)
-                samples[start].append(getattr(cell.bbox,start_name))
-                samples[end].append(getattr(cell.bbox,end_name))
-            bounds=[median(values) if values else first+(last-first)*i/count
-                    for i,values in enumerate(samples)]
-            bounds[0],bounds[-1]=first,last
-            if any(b<=a for a,b in zip(bounds,bounds[1:])):
+                start = getattr(cell, offset_name)
+                end = start + getattr(cell, span_name)
+                samples[start].append(getattr(cell.bbox, start_name))
+                samples[end].append(getattr(cell.bbox, end_name))
+            bounds = [
+                median(values) if values else first + (last - first) * i / count
+                for i, values in enumerate(samples)
+            ]
+            bounds[0], bounds[-1] = first, last
+            if any(b <= a for a, b in zip(bounds, bounds[1:])):
                 return None
-            return [b-a for a,b in zip(bounds,bounds[1:])]
-        normalized_widths=edges(cols,box.x0,box.x1,'x0','x1','col','colspan') or normalized_widths
-        normalized_heights=edges(rows,box.y0,box.y1,'y0','y1','row','rowspan') or normalized_heights
+            return [b - a for a, b in zip(bounds, bounds[1:])]
+
+        normalized_widths = (
+            edges(cols, box.x0, box.x1, "x0", "x1", "col", "colspan") or normalized_widths
+        )
+        normalized_heights = (
+            edges(rows, box.y0, box.y1, "y0", "y1", "row", "rowspan") or normalized_heights
+        )
     if preserve_geometry:
         return TableLayout(rows, cols, normalized_widths, normalized_heights, placements)
     # Native tables may grow to fit their contents. Reserve that height in all
     # renderers so later rows and page objects cannot cover the cell text.
     from docpipe.renderers.text_layout import estimate_text_height, wrap_text
     from docpipe.renderers.typography import TABLE_FONT_PT
+
     font_size = TABLE_FONT_PT if font_size_pt is None else font_size_pt
 
     for cell in placements:
-        width = max(1.0, sum(normalized_widths[cell.col:cell.col + cell.colspan]) - 4)
-        required = max(
-            estimate_text_height(cell.text, width, (font_size, False, False), mode)
-            for mode in ("arial", "dejavu")
-        ) + 4
+        width = max(1.0, sum(normalized_widths[cell.col : cell.col + cell.colspan]) - 4)
+        required = (
+            max(
+                estimate_text_height(cell.text, width, (font_size, False, False), mode)
+                for mode in ("arial", "dejavu")
+            )
+            + 4
+        )
         if full_line_boxes:
-            required = max(required, max(
-                max(1,len(wrap_text(cell.text,width,(font_size,False,False),font_metric_mode=mode).splitlines()))
-                *font_size + 4 for mode in ('arial','dejavu')))
-        available = sum(normalized_heights[cell.row:cell.row + cell.rowspan])
+            required = max(
+                required,
+                max(
+                    max(
+                        1,
+                        len(
+                            wrap_text(
+                                cell.text, width, (font_size, False, False), font_metric_mode=mode
+                            ).splitlines()
+                        ),
+                    )
+                    * font_size
+                    + 4
+                    for mode in ("arial", "dejavu")
+                ),
+            )
+        available = sum(normalized_heights[cell.row : cell.row + cell.rowspan])
         if required > available:
             increment = (required - available) / cell.rowspan
             for row in range(cell.row, cell.row + cell.rowspan):

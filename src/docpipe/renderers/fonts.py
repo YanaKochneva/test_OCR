@@ -1,31 +1,47 @@
 from __future__ import annotations
 
-from pathlib import Path
-from functools import lru_cache
 import os
+from functools import lru_cache
+from pathlib import Path
 
 
 def font_path(family: str, bold: bool = False, italic: bool = False) -> Path | None:
-    return next((path for name,b,i,path in installed_fonts()
-                 if name.casefold()==family.casefold() and b==bold and i==italic),None)
+    return next(
+        (
+            path
+            for name, b, i, path in installed_fonts()
+            if name.casefold() == family.casefold() and b == bold and i == italic
+        ),
+        None,
+    )
 
 
 @lru_cache(maxsize=1)
 def installed_fonts() -> tuple:
     """Discover families from font metadata, including optional custom folders."""
     from PIL import ImageFont
-    roots=[Path('C:/Windows/Fonts'),Path('/usr/share/fonts'),Path('/usr/local/share/fonts'),
-           Path.home()/'.local/share/fonts',Path(__file__).resolve().parent.parent/'assets/fonts']
-    roots.extend(Path(value) for value in os.getenv('DOCPIPE_FONT_DIRS','').split(os.pathsep) if value)
-    found=[]
+
+    roots = [
+        Path("C:/Windows/Fonts"),
+        Path("/usr/share/fonts"),
+        Path("/usr/local/share/fonts"),
+        Path.home() / ".local/share/fonts",
+        Path(__file__).resolve().parent.parent / "assets/fonts",
+    ]
+    roots.extend(
+        Path(value) for value in os.getenv("DOCPIPE_FONT_DIRS", "").split(os.pathsep) if value
+    )
+    found = []
     for root in roots:
         if not root.is_dir():
             continue
-        for path in sorted(root.rglob('*.ttf')):
+        for path in sorted(root.rglob("*.ttf")):
             try:
-                family,style=ImageFont.truetype(str(path),20).getname()
-                style=style.casefold()
-                found.append((family,'bold' in style,'italic' in style or 'oblique' in style,path))
+                family, style = ImageFont.truetype(str(path), 20).getname()
+                style = style.casefold()
+                found.append(
+                    (family, "bold" in style, "italic" in style or "oblique" in style, path)
+                )
             except OSError:
                 continue
     return tuple(found)
@@ -34,15 +50,19 @@ def installed_fonts() -> tuple:
 @lru_cache(maxsize=512)
 def _cmap(path: str) -> frozenset:
     from reportlab.pdfbase.ttfonts import TTFont
+
     try:
-        return frozenset(code for code,glyph in TTFont('FontInventory',path).face.charToGlyph.items() if glyph)
+        return frozenset(
+            code for code, glyph in TTFont("FontInventory", path).face.charToGlyph.items() if glyph
+        )
     except Exception:
         return frozenset()
 
 
 def supports_text(path: str, text: str) -> bool:
-    cmap=_cmap(path)
+    cmap = _cmap(path)
     return all(ord(character) in cmap for character in text if not character.isspace())
+
 
 # Bundled DejaVu Sans (Bitstream Vera license, см. LICENSE-DejaVu.txt):
 # детерминированный путь внутри пакета, не зависит от файловой системы хоста.
@@ -77,7 +97,6 @@ def require_font() -> Path:
     path = find_font()
     if path is None:
         raise RuntimeError(
-            "Шрифт с кириллицей не найден: ожидался bundled "
-            f"{_BUNDLED} или системный DejaVu Sans"
+            f"Шрифт с кириллицей не найден: ожидался bundled {_BUNDLED} или системный DejaVu Sans"
         )
     return path

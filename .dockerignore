@@ -2,7 +2,7 @@
 !src/
 !src/**
 !pyproject.toml
-!requirements-docker.txt
+!requirements.txt
 !constraints.txt
 !Dockerfile
 src/**/__pycache__/

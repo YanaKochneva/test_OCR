@@ -12,7 +12,7 @@ Pillow==12.3.0
 numpy==2.3.5
 rapidfuzz==3.14.3
 weasyprint==68.0
-ruff==0.14.2
-mypy==1.18.2
 docling==2.134.0
 python-docx==1.2.0
+rapidocr==3.9.1
+onnxruntime>=1.20,<2

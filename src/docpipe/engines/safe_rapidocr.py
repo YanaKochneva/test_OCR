@@ -161,6 +161,9 @@ def RapidOCR(*args, **kwargs):
     from rapidocr import RapidOCR as Backend
 
     params = kwargs.setdefault("params", {})
+    model_root = os.getenv("DOCPIPE_RAPIDOCR_MODEL_DIR")
+    if model_root:
+        params.setdefault("Global.model_root_dir", str(Path(model_root).resolve()))
     params.setdefault(
         "EngineConfig.onnxruntime.intra_op_num_threads", int(os.getenv("DOCPIPE_OCR_THREADS", "4"))
     )

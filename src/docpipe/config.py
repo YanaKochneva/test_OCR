@@ -52,11 +52,9 @@ class ReviewConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     company_domains: list[str] = Field(default_factory=lambda: ["polyus.com"])
     llm_enabled: bool = False
-    provider: Literal["aitunnel", "ollama", "nemotron"] = "aitunnel"
+    provider: Literal["aitunnel", "nemotron"] = "nemotron"
     nemotron_model: Path = Path("models/nemotron-3.5-parse")
     nemotron_device: Literal["auto", "cpu", "cuda"] = "auto"
-    ollama_url: str = "http://127.0.0.1:11434"
-    ollama_mode: Literal["reread", "structured"] = "reread"
     reread_dpi: int = Field(default=220, ge=150, le=400)
     reread_min_chars: int = Field(default=20, ge=1, le=500)
     api_model: str = "gpt-4.1-mini"

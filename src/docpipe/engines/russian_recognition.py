@@ -29,7 +29,7 @@ def recognition_params():
     from rapidocr.utils.typings import LangRec, ModelType, OCRVersion
 
     model, keys = model_files()
-    return {
+    params = {
         "Rec.model_path": str(model),
         "Rec.rec_keys_path": str(keys),
         "EngineConfig.onnxruntime.intra_op_num_threads": int(os.getenv("DOCPIPE_OCR_THREADS", "4")),
@@ -39,6 +39,18 @@ def recognition_params():
         "Rec.lang_type": LangRec.CYRILLIC,
         "Rec.rec_img_shape": [3, 48, 640],
     }
+    model_root = os.getenv("DOCPIPE_RAPIDOCR_MODEL_DIR")
+    if model_root:
+        params["Global.model_root_dir"] = str(Path(model_root).resolve())
+        for stage, filename in (
+            ("Det", "ch_PP-OCRv5_det_mobile.onnx"),
+            ("Cls", "ch_ppocr_mobile_v2.0_cls_mobile.onnx"),
+        ):
+            path = Path(model_root) / filename
+            if not path.is_file():
+                raise ModelError(f"Local RapidOCR model not found: {path}")
+            params[f"{stage}.model_path"] = str(path.resolve())
+    return params
 
 
 def configure_padding(reader):

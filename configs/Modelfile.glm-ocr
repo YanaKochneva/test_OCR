@@ -1,5 +1,0 @@
-FROM ../models/glm-ocr/model-eot.gguf
-TEMPLATE {{ .Prompt }}
-RENDERER glm-ocr
-PARSER glm-ocr
-PARAMETER temperature 0

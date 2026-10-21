@@ -4,7 +4,7 @@
 
 Минимальная версия Python — 3.11; Docker использует Python 3.11 и CPU.
 Зависимости приложения и extras определены в `pyproject.toml`.
-`requirements.txt` подключает локальный пакет с extras `docling,glm-review`.
+`requirements.txt` подключает локальный пакет с extras `docling,nemotron-review`.
 `constraints.txt` задаёт ограничения версий при установке и в CI.
 Это не полный lock-файл всех транзитивных зависимостей.
 

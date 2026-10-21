@@ -1,8 +1,31 @@
 # Перепроверка фрагментов через Nemotron 3.5 Parse
 
-Основной OCR остаётся Docling + RapidOCR. Nemotron заменяет GLM на этапе
-повторного чтения кропов текстовых блоков и ячеек. Эталон модели не передаётся.
-Сохраняются ограничения словарных исправлений из `glm_refinement.py`.
+Основной OCR остаётся Docling + RapidOCR. Nemotron локально выполняет
+повторное чтение кропов текстовых блоков и ячеек. Эталон модели не передаётся.
+Сохраняются ограничения словарных исправлений из `nemotron_refinement.py`.
+
+В JupyterLab используйте `process_documents.ipynb`: Python берётся из текущего
+ядра, зависимости уже должны быть установлены. В настройках задайте корень
+проекта и пути `DOCLING_MODELS`, `RAPIDOCR_MODELS`, `RUSSIAN_MODEL`,
+`NEMOTRON_MODEL`. Перепроверка Nemotron включена. По умолчанию используется CPU.
+Notebook проверяет локальные файлы и не устанавливает пакеты и не скачивает модели.
+
+Пример структуры папок (имена каталогов можно изменить в notebook):
+
+```text
+models/
+  docling/                  # артефакты layout/table с исходной структурой Docling
+  rapidocr/                 # ONNX-файлы, перечисленные ниже
+  ppocrv6-medium-ru/         # model.onnx и rec_keys.txt
+  nemotron-3.5-parse/        # веса, конфигурации и код NVIDIA
+```
+
+В `rapidocr/` нужны `ch_PP-OCRv5_det_mobile.onnx`,
+`ch_ppocr_mobile_v2.0_cls_mobile.onnx`, `eslav_PP-OCRv5_rec_mobile.onnx`
+и `latin_PP-OCRv5_rec_mobile.onnx`. При запуске CLI соответствующий каталог
+можно задать через `DOCPIPE_RAPIDOCR_MODEL_DIR`. Пути распознавания RU и
+артефактов Docling задаются через `DOCPIPE_RU_REC_MODEL_DIR` и
+`DOCLING_ARTIFACTS_PATH`. Локальные пути не зависят от окружения ядра.
 
 Модель: https://huggingface.co/nvidia/Nemotron-3.5-Parse.
 Локальные веса и официальный пакет `nemotron_parse` должны находиться вместе

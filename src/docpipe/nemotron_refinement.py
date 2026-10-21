@@ -1,8 +1,7 @@
-"""Image-only crop rereading with GLM or Nemotron; no reference documents."""
+"""Image-only crop rereading with local Nemotron; no reference documents."""
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import io
 import json
@@ -11,51 +10,10 @@ import time
 from difflib import SequenceMatcher
 from functools import lru_cache
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, build_opener
 
 from rapidfuzz.distance import Levenshtein
 
-from docpipe.remote_llm import _NoRedirect, local_ollama
 from docpipe.render.source import load_page_image as _page_image
-
-
-class GLMReader:
-    def __init__(self, config):
-        self.config = config
-
-    def recognize(self, image, timeout):
-        buffer = io.BytesIO()
-        image.save(buffer, "PNG")
-        body = {
-            "model": self.config.api_model,
-            "prompt": "Text Recognition:",
-            "images": [base64.b64encode(buffer.getvalue()).decode("ascii")],
-            "stream": False,
-            "options": {"temperature": 0, "num_ctx": 8192, "num_predict": 2048},
-        }
-        request = Request(
-            self.config.ollama_url.rstrip("/") + "/api/generate",
-            data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with build_opener(_NoRedirect()).open(request, timeout=timeout) as response:
-                data = response.read(2_000_001)
-        except HTTPError as exc:
-            raise RuntimeError(f"Ollama HTTP {exc.code}") from None
-        except URLError:
-            raise ConnectionError("Ollama connection failed") from None
-        if len(data) > 2_000_000:
-            raise ValueError("OCR response exceeds size limit")
-        result = json.loads(data)
-        if not result.get("done") or result.get("done_reason") != "stop":
-            raise ValueError("OCR response incomplete")
-        text = result.get("response")
-        if not isinstance(text, str) or not text.strip():
-            raise ValueError("OCR response empty")
-        return text.strip()
 
 
 def candidates(document, min_chars):
@@ -115,7 +73,7 @@ def proposals(original, recognized, known_word=None):
             ):
                 continue
             # Preserve dictionary words, abbreviations, and unknown domain terms
-            # for either crop reader, even when a replacement looks plausible.
+            # for Nemotron, even when a replacement looks plausible.
             # A correction must turn an unknown token into a known Russian word.
             if (
                 known_word(before.casefold())
@@ -136,11 +94,11 @@ def refine_document(document, config, out=None, reader=None):
     from docpipe.review import _apply
 
     started = time.monotonic()
-    backend = "nemotron" if config.review.provider == "nemotron" else "glm"
+    backend = "nemotron"
     report_name = f"review-{backend}-reread.json"
     report = {
         "stage": f"{backend}_reread",
-        "model": "nvidia/Nemotron-3.5-Parse" if backend == "nemotron" else config.review.api_model,
+        "model": "nvidia/Nemotron-3.5-Parse",
         "mode": "image_only_text_recognition",
         "calls": 0,
         "corrections": [],
@@ -148,25 +106,17 @@ def refine_document(document, config, out=None, reader=None):
         "units": [],
         "review_required": False,
     }
-    if config.offline and backend != "nemotron" and not local_ollama(config.review):
-        report.update(
-            status="skipped", review_required=True, issues=[{"kind": "offline_remote_ollama"}]
-        )
-        return document, report
     if reader is None:
-        if backend == "nemotron":
-            from docpipe.nemotron_reader import NemotronReader
+        from docpipe.nemotron_reader import NemotronReader
 
-            reader = NemotronReader(config.review)
-        else:
-            reader = GLMReader(config.review)
+        reader = NemotronReader(config.review)
     try:
         russian_dictionary()
     except ImportError:
         report.update(
             status="skipped",
             review_required=True,
-            issues=[{"kind": "missing_dependency", "detail": "Install docpipe[glm-review]"}],
+            issues=[{"kind": "missing_dependency", "detail": "Install docpipe[nemotron-review]"}],
         )
         return document, report
     selected = list(candidates(document, config.review.reread_min_chars))
@@ -203,8 +153,8 @@ def refine_document(document, config, out=None, reader=None):
                     buffer = io.BytesIO()
                     crop.save(buffer, "PNG")
                     key = hashlib.sha256(
-                        (config.review.api_model + (str(config.review.nemotron_model.resolve()) if backend == "nemotron" else "")).encode()
-                        + (b"\0nemotron-3.5-parse-v1\0" if backend == "nemotron" else b"\0Text Recognition:\0")
+                        ("nvidia/Nemotron-3.5-Parse" + str(config.review.nemotron_model.resolve())).encode()
+                        + b"\0nemotron-3.5-parse-v1\0"
                         + buffer.getvalue()
                     ).hexdigest()
                     cached = cache_dir / (key + ".json") if cache_dir else None
@@ -246,7 +196,7 @@ def refine_document(document, config, out=None, reader=None):
             except Exception as exc:
                 report["issues"].append(
                     {"unit_id": unit_id, "page": page.index + 1, "kind": type(exc).__name__,
-                     **({"detail": str(exc)[:300]} if backend == "nemotron" else {})}
+                     "detail": str(exc)[:300]}
                 )
                 break
             if out is not None:
@@ -269,9 +219,8 @@ def refine_document(document, config, out=None, reader=None):
         else "completed"
     )
     report["elapsed_seconds"] = round(time.monotonic() - started, 3)
-    if backend == "nemotron":
-        report["runtime_device"] = getattr(reader, "device", None)
-        report["model_path"] = str(config.review.nemotron_model.resolve())
+    report["runtime_device"] = getattr(reader, "device", None)
+    report["model_path"] = str(config.review.nemotron_model.resolve())
     document = _apply(document, changes, mark_review=True)
     if out is not None:
         (Path(out) / report_name).write_text(

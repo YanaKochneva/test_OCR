@@ -38,7 +38,6 @@ nemotron-review = [
   "pymorphy3==2.0.6",
   "pymorphy3-dicts-ru==2.4.417150.4580142",
 ]
-glm-review = ["pymorphy3==2.0.6", "pymorphy3-dicts-ru==2.4.417150.4580142"]
 docling = ["docling==2.134.0", "rapidocr==3.9.1", "onnxruntime>=1.20,<2"]
 pdf = ["weasyprint==68.0"]
 

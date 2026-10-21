@@ -1224,6 +1224,12 @@ class DoclingEngine(LayoutOcrEngine):
         kwargs.update(
             rec_model_path=str(model), rec_keys_path=str(keys), rapidocr_params=recognition_params()
         )
+        if os.getenv("DOCPIPE_RAPIDOCR_MODEL_DIR"):
+            for stage in ("det", "cls"):
+                option = f"{stage}_model_path"
+                if option not in params:
+                    raise DependencyError(f"Docling RapidOcrOptions must support {option}")
+                kwargs[option] = kwargs["rapidocr_params"][f"{stage.title()}.model_path"]
         return cls(**kwargs)
 
     @staticmethod

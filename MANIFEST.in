@@ -1,6 +1,7 @@
 include README.md LICENSES.md requirements.txt constraints.txt Dockerfile .dockerignore
 include config.example.yaml .env.example
-recursive-include configs *.yaml Modelfile.*
+include process_documents.ipynb
+recursive-include configs *.yaml
 recursive-include deploy *.yml
 recursive-include docs *.md
 recursive-include scripts *.py

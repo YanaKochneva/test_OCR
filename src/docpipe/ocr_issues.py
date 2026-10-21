@@ -187,11 +187,11 @@ def write_ocr_review(document, config, out, *, reset=False):
             )
             if not issue["original_text"]:
                 issue["original_text"] = region.get("original_ocr_text", "")
-    backend = "nemotron" if config.review.provider == "nemotron" else "glm"
-    glm_path = Path(out) / f"review-{backend}-reread.json"
-    if not reset and glm_path.exists():
-        glm = json.loads(glm_path.read_text("utf-8"))
-        for unit in glm.get("units", []):
+    backend = "nemotron"
+    reread_path = Path(out) / f"review-{backend}-reread.json"
+    if not reset and reread_path.exists():
+        reread = json.loads(reread_path.read_text("utf-8"))
+        for unit in reread.get("units", []):
             issue = items.get(unit["unit_id"])
             if issue is None and (unit.get("rejected") or unit.get("proposed_edits")):
                 loc = {"page": unit["page"], "block_id": unit["unit_id"].split(":")[1]}
@@ -231,7 +231,7 @@ def write_ocr_review(document, config, out, *, reset=False):
                 issue["alternatives"] = [
                     {
                         "source": backend,
-                        "model": glm.get("model"),
+                        "model": reread.get("model"),
                         "text": unit["recognized"],
                         "rejected": unit.get("rejected"),
                     }
@@ -369,7 +369,7 @@ def _review_image(source, page, config):
 def begin_review_run(out):
     """Archive review artifacts before processing a new source in a reused folder."""
     root = Path(out)
-    names = ("review", "review-glm-reread.json", "review-nemotron-reread.json", "image-fallback.json")
+    names = ("review", "review-nemotron-reread.json", "image-fallback.json")
     existing = [root / name for name in names if (root / name).exists()]
     if existing:
         archive = root / ("review-archive-" + uuid.uuid4().hex)

@@ -88,7 +88,7 @@ def review_formatting(document, config, out, client=None):
     """Review layouts without modifying OCR text or document geometry."""
     import pypdfium2 as pdfium
 
-    from docpipe.remote_llm import create_review_client, local_ollama
+    from docpipe.remote_llm import create_review_client
 
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -120,7 +120,7 @@ def review_formatting(document, config, out, client=None):
     for kind in ["pdf"]:
         report[kind].update(status="pending", unchecked=[p.index + 1 for p in document.pages])
     try:
-        if config.offline and not local_ollama(config.review):
+        if config.offline:
             raise ValueError("External visual review disabled offline")
         source = Path(document.source.file)
         if not source.is_file():

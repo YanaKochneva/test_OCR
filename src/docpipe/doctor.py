@@ -48,7 +48,7 @@ def run_doctor(config: AppConfig) -> dict:
         checks.append({"check": name, "status": status, "detail": detail})
 
     # Python
-    add("python", "PASS" if sys.version_info >= (3, 10) else "FAIL", platform.python_version())
+    add("python", "PASS" if sys.version_info >= (3, 12) else "FAIL", platform.python_version())
     # Зависимости
     for pkg in packages:
         add(

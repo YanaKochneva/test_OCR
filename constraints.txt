@@ -9,10 +9,10 @@ pikepdf==10.16.0
 reportlab==4.4.9
 img2pdf==0.6.3
 Pillow==12.3.0
-numpy==2.3.5
+numpy==2.5.4
 rapidfuzz==3.14.3
 weasyprint==68.0
-docling==2.134.0
+docling==2.140.0
 python-docx==1.2.0
 rapidocr==3.9.1
 onnxruntime>=1.20,<2

@@ -7,7 +7,7 @@ name = "docpipe"
 version = "0.1.0"
 readme = "README.md"
 description = "Конвейер восстановления документов из сканов"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
   "pydantic==2.14.1",
   "pydantic-settings==2.16.0",
@@ -20,7 +20,7 @@ dependencies = [
   "reportlab==4.4.9",
   "img2pdf==0.6.3",
   "Pillow==12.3.0",
-  "numpy==2.3.5",
+  "numpy==2.5.4",
   "python-docx==1.2.0",
   "rapidfuzz==3.14.3",
 ]
@@ -38,7 +38,7 @@ nemotron-review = [
   "pymorphy3==2.0.6",
   "pymorphy3-dicts-ru==2.4.417150.4580142",
 ]
-docling = ["docling==2.134.0", "rapidocr==3.9.1", "onnxruntime>=1.20,<2"]
+docling = ["docling==2.140.0", "rapidocr==3.9.1", "onnxruntime>=1.20,<2"]
 pdf = ["weasyprint==68.0"]
 
 [project.scripts]

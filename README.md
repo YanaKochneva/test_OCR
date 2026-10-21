@@ -168,14 +168,14 @@ OCR ниже `unreadable_min_confidence=0.7`, пустой ячейки с ви�
 Источник разворачивается с учётом OCR-коррекции ориентации. Изображения страниц
 отправляются в AITunnel только для проверки и не становятся фоном выходного документа.
 
-Рекомендуется Python 3.11. Установите пакет `pip install ".[docling]"`, скачайте модели Docling и русскую модель командой `python scripts/download_russian_recognition.py`. Укажите `DOCLING_ARTIFACTS_PATH` и при необходимости `DOCPIPE_RU_REC_MODEL_DIR`, затем запустите `uvicorn docpipe.api.app:app --host 127.0.0.1 --port 8000 --workers 1`. Полная последовательность подготовки моделей зафиксирована в `Dockerfile`.
+Рекомендуется Python 3.12. Установите пакет `pip install ".[docling]"`, скачайте модели Docling и русскую модель командой `python scripts/download_russian_recognition.py`. Укажите `DOCLING_ARTIFACTS_PATH` и при необходимости `DOCPIPE_RU_REC_MODEL_DIR`, затем запустите `uvicorn docpipe.api.app:app --host 127.0.0.1 --port 8000 --workers 1`. Полная последовательность подготовки моделей зафиксирована в `Dockerfile`.
 
 В репозитории хранятся исходники сервиса, конфигурация развёртывания, эксплуатационная документация и подготовка моделей. Генерируемые результаты и временные файлы в него не включаются. Локальные `data/`, `models/`, `reports/` игнорируются Git и исключены из Docker-контекста. Лицензии зависимостей перечислены в `LICENSES.md`; шрифты поставляются со своими лицензиями.
 
 ## Установка зависимостей
 
 Зависимости пакета определены в `pyproject.toml`; `requirements.txt` подключает
-OCR и локальную перепроверку Nemotron. Поддерживаемая минимальная версия Python — 3.11.
+OCR и локальную перепроверку Nemotron. Поддерживаемая минимальная версия Python — 3.12.
 
 ```sh
 python -m pip install -r requirements.txt

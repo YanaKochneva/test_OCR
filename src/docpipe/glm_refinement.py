@@ -1,4 +1,4 @@
-"""Image-only GLM-OCR rereading; proposals never use reference documents."""
+"""Image-only crop rereading with GLM or Nemotron; no reference documents."""
 
 from __future__ import annotations
 
@@ -114,8 +114,8 @@ def proposals(original, recognized, known_word=None):
                 or not re.fullmatch("[А-Яа-яЁёA-Za-z-]+", after)
             ):
                 continue
-            # GLM-OCR's Russian reading is weaker than the primary recognizer.
-            # Preserve dictionary words, abbreviations, and unknown domain terms.
+            # Preserve dictionary words, abbreviations, and unknown domain terms
+            # for either crop reader, even when a replacement looks plausible.
             # A correction must turn an unknown token into a known Russian word.
             if (
                 known_word(before.casefold())
@@ -136,9 +136,11 @@ def refine_document(document, config, out=None, reader=None):
     from docpipe.review import _apply
 
     started = time.monotonic()
+    backend = "nemotron" if config.review.provider == "nemotron" else "glm"
+    report_name = f"review-{backend}-reread.json"
     report = {
-        "stage": "glm_reread",
-        "model": config.review.api_model,
+        "stage": f"{backend}_reread",
+        "model": "nvidia/Nemotron-3.5-Parse" if backend == "nemotron" else config.review.api_model,
         "mode": "image_only_text_recognition",
         "calls": 0,
         "corrections": [],
@@ -146,12 +148,18 @@ def refine_document(document, config, out=None, reader=None):
         "units": [],
         "review_required": False,
     }
-    if config.offline and not local_ollama(config.review):
+    if config.offline and backend != "nemotron" and not local_ollama(config.review):
         report.update(
             status="skipped", review_required=True, issues=[{"kind": "offline_remote_ollama"}]
         )
         return document, report
-    reader = reader or GLMReader(config.review)
+    if reader is None:
+        if backend == "nemotron":
+            from docpipe.nemotron_reader import NemotronReader
+
+            reader = NemotronReader(config.review)
+        else:
+            reader = GLMReader(config.review)
     try:
         russian_dictionary()
     except ImportError:
@@ -166,11 +174,12 @@ def refine_document(document, config, out=None, reader=None):
     changes = {}
     image = None
     current_page = None
-    cache_dir = Path(out) / "glm-crops" if out is not None else None
+    cache_dir = Path(out) / f"{backend}-crops" if out is not None else None
     if cache_dir:
         cache_dir.mkdir(parents=True, exist_ok=True)
     try:
         for page, unit_id, text, bbox in selected:
+            unit_started = time.monotonic()
             remaining = config.review.stage_timeout_seconds - (time.monotonic() - started)
             if remaining <= 0 or report["calls"] >= config.review.max_calls:
                 report["issues"].append({"kind": "budget_exceeded"})
@@ -194,8 +203,8 @@ def refine_document(document, config, out=None, reader=None):
                     buffer = io.BytesIO()
                     crop.save(buffer, "PNG")
                     key = hashlib.sha256(
-                        config.review.api_model.encode()
-                        + b"\0Text Recognition:\0"
+                        (config.review.api_model + (str(config.review.nemotron_model.resolve()) if backend == "nemotron" else "")).encode()
+                        + (b"\0nemotron-3.5-parse-v1\0" if backend == "nemotron" else b"\0Text Recognition:\0")
                         + buffer.getvalue()
                     ).hexdigest()
                     cached = cache_dir / (key + ".json") if cache_dir else None
@@ -219,6 +228,7 @@ def refine_document(document, config, out=None, reader=None):
                     "recognized": recognized,
                     "rejected": rejected,
                     "proposed_edits": [list(edit) for edit in edits],
+                    "elapsed_seconds": round(time.monotonic() - unit_started, 3),
                 }
                 report["units"].append(item)
                 for before, after in edits:
@@ -229,17 +239,18 @@ def refine_document(document, config, out=None, reader=None):
                             "page": page.index + 1,
                             "before": before,
                             "after": after,
-                            "source": "glm_ocr_reread",
+                            "source": f"{backend}_ocr_reread",
                             "image_sha256": key,
                         }
                     )
             except Exception as exc:
                 report["issues"].append(
-                    {"unit_id": unit_id, "page": page.index + 1, "kind": type(exc).__name__}
+                    {"unit_id": unit_id, "page": page.index + 1, "kind": type(exc).__name__,
+                     **({"detail": str(exc)[:300]} if backend == "nemotron" else {})}
                 )
                 break
             if out is not None:
-                (Path(out) / "review-glm-reread.json").write_text(
+                (Path(out) / report_name).write_text(
                     json.dumps(report, ensure_ascii=False, indent=2), "utf-8"
                 )
     finally:
@@ -258,9 +269,12 @@ def refine_document(document, config, out=None, reader=None):
         else "completed"
     )
     report["elapsed_seconds"] = round(time.monotonic() - started, 3)
+    if backend == "nemotron":
+        report["runtime_device"] = getattr(reader, "device", None)
+        report["model_path"] = str(config.review.nemotron_model.resolve())
     document = _apply(document, changes, mark_review=True)
     if out is not None:
-        (Path(out) / "review-glm-reread.json").write_text(
+        (Path(out) / report_name).write_text(
             json.dumps(report, ensure_ascii=False, indent=2), "utf-8"
         )
     return document, report

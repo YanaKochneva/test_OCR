@@ -1,0 +1,14 @@
+offline: true
+render:
+  docx_enabled: false
+  unreadable_as_image: true
+review:
+  llm_enabled: true
+  provider: nemotron
+  api_model: nvidia/Nemotron-3.5-Parse
+  nemotron_model: models/nemotron-3.5-parse
+  nemotron_device: auto
+  timeout_seconds: 120
+  stage_timeout_seconds: 900
+  max_calls: 300
+  visual_enabled: false

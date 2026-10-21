@@ -1,9 +1,9 @@
-pydantic==2.13.4
-pydantic-settings==2.14.1
+pydantic==2.14.1
+pydantic-settings==2.16.0
 PyYAML==6.0.3
 fastapi==0.128.2
-uvicorn==0.48.0
-python-multipart==0.0.20
+uvicorn==0.54.0
+python-multipart==0.0.32
 pypdfium2==5.13.0
 pikepdf==10.16.0
 reportlab==4.4.9

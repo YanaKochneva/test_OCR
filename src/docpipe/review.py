@@ -282,8 +282,9 @@ def review_before_render(document: Document, config, out=None, client=None):
     document = _apply(document, changes, domain_changes=True)
     if (
         config.review.llm_enabled
-        and config.review.provider == "ollama"
-        and config.review.ollama_mode == "reread"
+        and (config.review.provider == "nemotron" or (
+            config.review.provider == "ollama" and config.review.ollama_mode == "reread"
+        ))
     ):
         from docpipe.glm_refinement import refine_document
 
@@ -308,7 +309,7 @@ def review_before_render(document: Document, config, out=None, client=None):
                 update={
                     "warnings": [
                         *document.warnings,
-                        "GLM OCR reread requires review; see review-glm-reread.json",
+                        f"OCR reread requires review; see review-{'nemotron' if config.review.provider == 'nemotron' else 'glm'}-reread.json",
                     ]
                 }
             )
@@ -531,10 +532,13 @@ def review_after_render(document, config, out, client=None):
                         chunks.append((number, chunk))
     except Exception as exc:
         report["issues"].append({"kind": "pdf_read_error", "detail": type(exc).__name__})
-    reread_mode = config.review.provider == "ollama" and config.review.ollama_mode == "reread"
+    reread_mode = config.review.provider == "nemotron" or (
+        config.review.provider == "ollama" and config.review.ollama_mode == "reread"
+    )
     transport = None if reread_mode else _client(config, report, client, document)
     if reread_mode:
-        report["mode"] = "deterministic_export_check_after_glm_reread"
+        backend = "nemotron" if config.review.provider == "nemotron" else "glm"
+        report["mode"] = f"deterministic_export_check_after_{backend}_reread"
     completed = Counter()
     required = Counter(n for n, _ in chunks)
     if transport:

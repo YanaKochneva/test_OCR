@@ -13,6 +13,8 @@ class _NoRedirect(HTTPRedirectHandler):
 
 
 def create_review_client(config, document=None):
+    if config.provider == "nemotron":
+        raise ValueError("Nemotron is a local crop reader, not a chat review transport")
     if config.provider == "ollama":
         return OllamaClient(config, document)
     return AITunnelClient(config)

@@ -37,6 +37,8 @@ class AssetTests(unittest.TestCase):
                 # PNG crop and placement agree to less than a source pixel.
                 self.assertEqual(assets[0]["bbox_points_top_left"], [20, 30, 80, 60])
                 self.assertEqual(len(collect_regions(page, [], [{"bbox": [.1, .1, .4, .2]}])), 1)
+                self.assertEqual(len(collect_regions(page, [{"class": "Picture", "bbox": [.1, .1, .4, .2]}],
+                                                     [{"bbox": [.1, .1, .4, .2]}])), 1)
                 page.close()
                 page = document[1]
                 self.assertEqual(collect_regions(page, []), [])

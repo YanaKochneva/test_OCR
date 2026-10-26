@@ -34,8 +34,12 @@ def collect_regions(page, blocks, explicit_regions=()):
     """
     width, height = page.get_size()
     regions = [validate_region({**r, "source": "explicit"}) for r in explicit_regions]
-    regions.extend(validate_region({"bbox": b["bbox"], "source": "nemotron", "class": b["class"]})
-                   for b in blocks if b["class"].lower() in IMAGE_CLASSES)
+    for block in blocks:
+        if block["class"].lower() not in IMAGE_CLASSES:
+            continue
+        if any(covered_fraction(block["bbox"], region["bbox"]) > .8 for region in regions):
+            continue
+        regions.append(validate_region({"bbox": block["bbox"], "source": "nemotron", "class": block["class"]}))
     for obj in page.get_objects():
         if obj.type != 3:  # FPDF_PAGEOBJ_IMAGE
             continue

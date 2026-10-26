@@ -1,6 +1,7 @@
 """Offline contract checks: python scripts/test_nemotron_only.py."""
 from pathlib import Path
 import sys
+import json
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -59,6 +60,9 @@ class DirectNemotronTests(unittest.TestCase):
                 self.assertEqual(model.generate.call_count, 2)
                 self.assertEqual(processor.call_args.kwargs["images"][0].size, (64, 96))
                 self.assertTrue(output.is_file())
+                saved = json.loads(output.with_suffix(".raw.json").read_text(encoding="utf-8"))
+                self.assertTrue(saved["complete"])
+                self.assertEqual(saved["pages"], ["<s>Текст</s>", "<s>Текст</s>"])
                 model.generate.return_value = torch.tensor([[5, 5, 5]])
                 with self.assertRaisesRegex(RuntimeError, "token limit"):
                     recognize(source, root / "truncated.pdf", root, device="cpu", max_new_tokens=3)

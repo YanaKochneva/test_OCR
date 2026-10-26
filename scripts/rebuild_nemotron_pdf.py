@@ -54,6 +54,14 @@ def rebuild(raw_pdf: Path, source_pdf: Path, output: Path, image_regions=None, i
             recovered += "" if occupied > available else " "
     recovered = re.sub(r"<[^>]+>", lambda m: re.sub(r"\s+", "", m[0]), recovered)
     raw_pages = re.split(r"</s>\s*<s>", recovered)[1:]
+    raw_sidecar = raw_pdf.with_suffix(".raw.json")
+    if raw_sidecar.is_file():
+        saved = json.loads(raw_sidecar.read_text(encoding="utf-8"))
+        if not saved.get("complete"):
+            raise ValueError("Nemotron response is incomplete; wait for inference to finish")
+        if Path(saved["source"]).resolve() != source_pdf.resolve():
+            raise ValueError("Nemotron response belongs to another source document")
+        raw_pages = saved["pages"]
     pattern = re.compile(
         r"<x_([\d.]+)>\s*<y_([\d.]+)>(.*?)<x_([\d.]+)>\s*<y_([\d.]+)>\s*<class_([^>]+)>", re.S
     )
@@ -99,29 +107,52 @@ def rebuild(raw_pdf: Path, source_pdf: Path, output: Path, image_regions=None, i
                 bw, bh = (x2 - x1) * width, (y2 - y1) * height
                 if bw <= 0 or bh <= 0:
                     raise ValueError(f"Invalid box on page {i+1}")
+                if cls == "Table":
+                    from docpipe.nemotron_table_pdf import draw_table
+                    table_info = draw_table(canvas, body, x1 * width, height - y1 * height, bw, bh)
+                    blocks.append({"class": cls, "bbox": original_bbox, "rendered_as": "table",
+                                   "text": body, **table_info})
+                    continue
+                source_lines = [line.strip() for line in body.splitlines() if line.strip()]
+                contents_lines = (source_lines if len(source_lines) >= 3 and all(
+                    re.search(r"\.{2,}\s*\d+\s*$", line) for line in source_lines) else None)
                 body = re.sub(r"\s+", " ", body).strip()
                 body = body.replace("\x00", "•")
                 bold = "**" in body or cls == "Section-header"
                 body = body.replace("**", "")
+                if body.startswith("_") and body.endswith("_"):
+                    body = body[1:-1]
                 body = re.sub(r"<[^>]+>", "", body)
                 # Do not correct the recognized words or numbers.
                 body = html.escape(body)
+                if contents_lines:
+                    body = "<br/>".join(html.escape(line.replace("**", "")) for line in contents_lines)
                 center = (abs((x1 + x2) / 2 - .5) < .08 and (y1 > .4 and i == 0 or bw < width * .2))
                 size = 13 if i == 0 else (9 if cls == "Page-header" else 11.5)
+                rotated = bw < bh * .25 and len(body) > 25
+                available_width, available_height = (bh, bw) if rotated else (bw, bh)
                 while True:
                     style = ParagraphStyle("block", fontName="NemotronBold" if bold else "Nemotron",
                                            fontSize=size, leading=size * 1.15,
                                            alignment=1 if center else 0, splitLongWords=True)
                     paragraph = Paragraph(body, style)
-                    _, used = paragraph.wrap(bw, height)
-                    if used <= bh + .01 or size <= 4:
+                    _, used = paragraph.wrap(available_width, height)
+                    if used <= available_height + .01 or size <= 4:
                         break
                     size -= .1
-                if used > bh + .01:
+                if used > available_height + .01:
                     raise ValueError(f"Block does not fit on page {i+1}")
-                paragraph.drawOn(canvas, x1 * width, height - y1 * height - used)
+                if rotated:
+                    canvas.saveState()
+                    canvas.translate(x2 * width, height - y2 * height)
+                    canvas.rotate(90)
+                    paragraph.drawOn(canvas, 0, bw - used)
+                    canvas.restoreState()
+                else:
+                    paragraph.drawOn(canvas, x1 * width, height - y1 * height - used)
                 blocks.append({"class": cls, "bbox": [x1, y1, x2, y2],
-                               "source_bbox": original_bbox, "text": html.unescape(body), "font_size": round(size, 2)})
+                               "source_bbox": original_bbox, "text": html.unescape(body.replace("<br/>", "\n")),
+                               "rotation": 90 if rotated else 0, "font_size": round(size, 2)})
             if not blocks:
                 raise ValueError(f"No blocks recovered on page {i+1}")
             if len(blocks) != raw.count("<class_"):

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_text_in_pic>"
 
@@ -102,6 +103,7 @@ def recognize(source: Path, output: Path, model_path: Path, *, device: str = "au
     generation.max_new_tokens = max_new_tokens
     generation.do_sample = False
     responses = []
+    output.parent.mkdir(parents=True, exist_ok=True)
     for index, image in enumerate(page_images(source, dpi), start=1):
         print(f"Nemotron: page {index}", flush=True)
         try:
@@ -119,10 +121,16 @@ def recognize(source: Path, output: Path, model_path: Path, *, device: str = "au
             if not raw.strip():
                 raise RuntimeError(f"Page {index}: model returned an empty response")
             responses.append(raw)
+            output.with_suffix(".raw.json").write_text(
+                json.dumps({"source": str(source.resolve()), "complete": False,
+                            "pages": responses}, ensure_ascii=False, indent=2), encoding="utf-8")
         finally:
             image.close()
     if not responses:
         raise ValueError("Document has no pages")
     output.parent.mkdir(parents=True, exist_ok=True)
     write_response_pdf(responses, output)
+    output.with_suffix(".raw.json").write_text(
+        json.dumps({"source": str(source.resolve()), "complete": True,
+                    "pages": responses}, ensure_ascii=False, indent=2), encoding="utf-8")
     return output

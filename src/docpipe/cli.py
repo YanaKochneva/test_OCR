@@ -11,14 +11,6 @@ def main() -> int:
     p = argparse.ArgumentParser(prog="docpipe")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    n = sub.add_parser("nemotron-only", help="Full-page Nemotron only; raw response as PDF")
-    n.add_argument("file", type=Path)
-    n.add_argument("--out", type=Path, required=True, help="Output .pdf file")
-    n.add_argument("--model", type=Path, default=Path("models/nemotron-3.5-parse"))
-    n.add_argument("--device", default="auto", help="auto, cpu, cuda or cuda:N")
-    n.add_argument("--dpi", type=int, default=150)
-    n.add_argument("--max-new-tokens", type=int, default=8744)
-
     d = sub.add_parser("doctor")
     d.add_argument("--config", type=Path)
 
@@ -51,17 +43,6 @@ def main() -> int:
     ms.add_parser("download")
 
     a = p.parse_args()
-    if a.cmd == "nemotron-only":
-        from docpipe.nemotron_only import recognize
-
-        try:
-            result = recognize(a.file, a.out, a.model, device=a.device,
-                               dpi=a.dpi, max_new_tokens=a.max_new_tokens)
-        except (ValueError, FileNotFoundError, RuntimeError) as exc:
-            p.exit(1, f"Nemotron: {exc}\n")
-        print(result)
-        return 0
-
     cfg = load_config(getattr(a, "config", None))
 
     if a.cmd == "review-decision":

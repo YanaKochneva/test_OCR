@@ -61,5 +61,14 @@ Runtime-проверки экспорта и реестр сложных слу�
 Адаптеры OCR сохраняют обработку узких кропов и рекомендованный padding
 русской модели — они необходимы для распознавания.
 
-Docker Engine на машине подготовки не запущен: новая сборка и запуск образа
-пока не подтверждены. Перед переносом проверьте образ в целевом окружении.
+Перед развёртыванием проверьте конфигурацию и сборку в окружении с работающим
+Docker Engine:
+
+```sh
+docker compose --env-file .env -f deploy/docker-compose.yml config --quiet
+docker compose --env-file .env -f deploy/docker-compose.yml build
+docker compose --env-file .env -f deploy/docker-compose.yml up -d
+```
+
+Проверки доступности: `GET /healthz` и `GET /readyz`. Документы передаются через
+`POST /v1/recognize` или асинхронный `POST /v1/jobs`; веб-форма загрузки отсутствует.

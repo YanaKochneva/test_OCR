@@ -12,7 +12,7 @@
 - `options`: JSON-строка с `engine` и `outputs` (необязательно).
 
 ```sh
-curl -F "file=@scan.pdf" -F "request_id=platform-task-42" http://localhost:8001/v1/jobs
+curl -F "file=@scan.pdf" -F "request_id=platform-task-42" http://localhost:8000/v1/jobs
 ```
 
 Ответ HTTP 202: `job_id`, `request_id`, `status`, `progress` (0–100),

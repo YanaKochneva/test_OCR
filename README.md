@@ -4,7 +4,26 @@ API-сервис распознавания PDF и сканов с восста�
 Основной движок — Docling + RapidOCR с русской моделью PP-OCRv6.
 Для локальной перепроверки текстовых фрагментов используется Nemotron 3.5 Parse.
 Конфигурация: `configs/nemotron-review.yaml`.
-Подготовка моделей и сравнение CER: [docs/nemotron-review.md](docs/nemotron-review.md).
+Подготовка моделей: [docs/nemotron-review.md](docs/nemotron-review.md).
+
+## Состав проекта
+
+Поддерживаются два сценария: обработка документов из notebook и HTTP API
+в Docker-контейнере. Веб-форма загрузки и экспериментальные сценарии удалены.
+CLI остаётся внутренней точкой запуска notebook.
+
+```text
+process_documents.ipynb       # локальная обработка
+src/docpipe/                 # OCR, перепроверка, экспорт и API
+configs/nemotron-review.yaml # настройки notebook
+deploy/docker-compose.yml   # запуск API в Docker
+scripts/                    # подготовка моделей
+docs/                       # инструкции по эксплуатации и API
+```
+
+Локальные модели, окружение Python, входные документы, задания, результаты
+и временные файлы не входят в Git-поставку. HTML в результатах — экспорт
+распознанного документа; он сохраняется.
 
 ## Запуск из notebook
 
@@ -33,7 +52,7 @@ docker compose --env-file .env -f deploy/docker-compose.yml up --build -d
 Проверка API-ключа OCR-сервиса по умолчанию отключена для локального доступа.
 В Compose она включается через `DOCPIPE_REQUIRE_API_KEY=true` и
 `DOCPIPE_API_KEY` (не менее 32 символов).
-После запуска откройте http://localhost:8000 — это форма загрузки документов.
+После запуска отправляйте документы на `POST http://localhost:8000/v1/recognize`.
 Первая сборка скачивает зависимости и модели; ей нужны интернет и несколько гигабайт свободного места. Модели включены в образ. Сервис использует CPU, работает от непривилегированного пользователя и слушает `127.0.0.1:8000`. Для внешнего доступа настройте reverse proxy с HTTPS.
 
 Документация API: [Swagger UI](http://localhost:8000/docs), [OpenAPI](http://localhost:8000/openapi.json).
@@ -184,7 +203,14 @@ docker compose --env-file .env -f deploy/docker-compose.yml logs -f
 docker compose --env-file .env -f deploy/docker-compose.yml down
 ```
 
-В Docker Compose включена текстовая проверка OCR и экспортированных документов через AITunnel API. Задайте `AITUNNEL_API_KEY` в `.env`; модель выбирается через `DOCPIPE_REVIEW_MODEL`. Само OCR выполняется локально, а текст для проверки отправляется во внешний API. Локальная LLM не используется. Для запуска вне Compose задайте `DOCPIPE_OFFLINE=false`, `DOCPIPE_REVIEW__LLM_ENABLED=true` и `AITUNNEL_API_KEY`; пример CLI-конфигурации — `configs/aitunnel-review.yaml`. При недоступности проверки отчёт отмечает необходимость ручной проверки. Качество OCR зависит от исходного скана; результаты с `review_required=true` нужно проверить.
+В Docker Compose проверка через AITunnel API по умолчанию выключена. Чтобы
+включить её, задайте `DOCPIPE_OFFLINE=false`, `DOCPIPE_REVIEW_ENABLED=true`
+и `AITUNNEL_API_KEY` в `.env`; модель выбирается через `DOCPIPE_REVIEW_MODEL`.
+Само OCR выполняется локально, а данные для проверки отправляются во внешний
+API. Для запуска вне Compose задайте `DOCPIPE_OFFLINE=false`,
+`DOCPIPE_REVIEW__LLM_ENABLED=true`, `DOCPIPE_REVIEW__PROVIDER=aitunnel`
+и `AITUNNEL_API_KEY`. При недоступности проверки отчёт отмечает необходимость
+ручной проверки. Результаты с `review_required=true` нужно проверить.
 
 ## Локальный запуск
 
@@ -214,7 +240,8 @@ OCR ниже `unreadable_min_confidence=0.7`, пустой ячейки с ви�
 
 После сборки можно сравнивать изображения исходной страницы и реального экспорта:
 `DOCPIPE_REVIEW__VISUAL_ENABLED=true` (при включённом AITunnel и `DOCPIPE_OFFLINE=false`).
-В `configs/aitunnel-review.yaml` и Docker Compose эта проверка включена.
+В Docker Compose она включается вместе с внешней проверкой через
+`DOCPIPE_REVIEW_ENABLED=true`; по умолчанию она выключена.
 Отчёт `review-formatting.json` содержит формат, страницу, предполагаемую область
 дефекта, уверенность, проверенные и пропущенные страницы. Замечания требуют
 подтверждения человеком; текст и координаты документа автоматически не меняются.

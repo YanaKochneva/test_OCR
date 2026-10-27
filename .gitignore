@@ -26,6 +26,8 @@ build/
 data/
 models/
 reports/
+output/
+tmp/
 *.log
 *.log.*
 *.tmp

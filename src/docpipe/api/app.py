@@ -80,13 +80,6 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
             },
         )
 
-    @app.get("/", include_in_schema=False)
-    def user_interface() -> FileResponse:
-        return FileResponse(
-            Path(__file__).with_name("static") / "index.html",
-            media_type="text/html; charset=utf-8",
-        )
-
     def authorize(api_key: str | None) -> None:
         if cfg.api.require_api_key and (
             not cfg.api.api_key or not hmac.compare_digest(api_key or "", cfg.api.api_key)

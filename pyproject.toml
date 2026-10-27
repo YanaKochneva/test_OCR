@@ -51,4 +51,4 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-docpipe = ["assets/fonts/*.ttf", "assets/fonts/*.txt", "api/static/*.html"]
+docpipe = ["assets/fonts/*.ttf", "assets/fonts/*.txt"]

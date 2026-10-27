@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from docpipe.nemotron_assets import IMAGE_CLASSES, collect_regions, covered_fraction, save_regions
+from docpipe.nemotron_block_types import resolve_block_type, source_column_widths
 
 import pypdfium2 as pdfium
 import pikepdf
@@ -82,16 +83,24 @@ def rebuild(raw_pdf: Path, source_pdf: Path, output: Path, image_regions=None, i
             canvas.setPageSize((width, height))
             blocks = []
             matches = list(pattern.finditer(raw))
-            figure_blocks = [{"class": m[6], "bbox": [float(m[j]) for j in (1, 2, 4, 5)]}
+            figure_blocks = [resolve_block_type({"class": m[6], "text": m[3], "bbox": [float(m[j]) for j in (1, 2, 4, 5)]})
                              for m in matches]
+            column_hints = {}
             try:
+                for index, block in enumerate(figure_blocks):
+                    if "column_continuation" in block.get("table_repairs", []):
+                        from bs4 import BeautifulSoup
+                        columns = len(BeautifulSoup(block["text"], "html.parser").find("tr").find_all("th"))
+                        column_hints[index] = source_column_widths(page, block["bbox"], columns)
                 regions = collect_regions(page, figure_blocks, [r for r in explicit if r["page"] == i + 1])
                 assets = save_regions(page, regions, image_dir, i + 1, dpi=image_dpi)
             finally:
                 page.close()
             all_assets.extend(assets)
-            for match in matches:
+            for index, match in enumerate(matches):
                 x1, y1, body, x2, y2, cls = match.groups()
+                resolved = figure_blocks[index]
+                cls, body = resolved["class"], resolved["text"]
                 x1, y1, x2, y2 = map(float, (x1, y1, x2, y2))
                 original_bbox = [x1, y1, x2, y2]
                 if cls.lower() in IMAGE_CLASSES or any(
@@ -109,9 +118,12 @@ def rebuild(raw_pdf: Path, source_pdf: Path, output: Path, image_regions=None, i
                     raise ValueError(f"Invalid box on page {i+1}")
                 if cls == "Table":
                     from docpipe.nemotron_table_pdf import draw_table
-                    table_info = draw_table(canvas, body, x1 * width, height - y1 * height, bw, bh)
+                    table_info = draw_table(canvas, body, x1 * width, height - y1 * height, bw, bh,
+                                            column_widths=column_hints.get(index))
                     blocks.append({"class": cls, "bbox": original_bbox, "rendered_as": "table",
-                                   "text": body, **table_info})
+                                   "text": body, "original_class": resolved.get("original_class", cls),
+                                   "type_resolution": resolved.get("type_resolution"),
+                                   "table_repairs": resolved.get("table_repairs", []), **table_info})
                     continue
                 source_lines = [line.strip() for line in body.splitlines() if line.strip()]
                 contents_lines = (source_lines if len(source_lines) >= 3 and all(

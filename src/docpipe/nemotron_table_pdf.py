@@ -8,7 +8,7 @@ import sys
 from statistics import median
 
 
-def draw_table(canvas, raw, x, top, width, height):
+def draw_table(canvas, raw, x, top, width, height, column_widths=None):
     from bs4 import BeautifulSoup
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle
@@ -37,9 +37,11 @@ def draw_table(canvas, raw, x, top, width, height):
                 col += 1
             rs, cs = max(1, int(cell.get("rowspan", 1))), max(1, int(cell.get("colspan", 1)))
             rs = min(rs, len(rows) - row)
-            body = cell.get_text(" ", strip=True)
+            for br in cell.find_all("br"):
+                br.replace_with("\ue000")
+            body = cell.get_text(" ", strip=True).replace("\ue000", "\n")
             body = re.sub(r"\*\*(.*?)\*\*", r"\1", body, flags=re.S)
-            cells.append((row, col, html.escape(body), cell.name == "th"))
+            cells.append((row, col, html.escape(body).replace("\n", "<br/>"), cell.name == "th"))
             for r in range(row, row + rs):
                 for c in range(col, col + cs):
                     occupied.add((r, c))
@@ -58,6 +60,10 @@ def draw_table(canvas, raw, x, top, width, height):
         samples[col].append(min(80, max(8, len(html.unescape(body)))))
     weights = [median(values) ** .6 if values else 1 for values in samples]
     widths = [width * w / sum(weights) for w in weights]
+    if column_widths is not None:
+        if len(column_widths) != ncols or any(w <= 0 for w in column_widths):
+            raise ValueError("Column widths must match the number of table columns")
+        widths = [width * w / sum(column_widths) for w in column_widths]
     size = 9.5
     while True:
         data = [[""] * ncols for _ in rows]
@@ -95,4 +101,5 @@ def draw_table(canvas, raw, x, top, width, height):
     ]))
     result.wrap(width, height)
     result.drawOn(canvas, x, top - height)
-    return {"rows": len(rows), "columns": ncols, "font_size": round(size, 2)}
+    return {"rows": len(rows), "columns": ncols, "font_size": round(size, 2),
+            "column_widths": [w/width for w in widths]}

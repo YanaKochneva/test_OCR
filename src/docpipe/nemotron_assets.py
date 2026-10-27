@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from docpipe.nemotron_block_types import resolve_block_type
 
 
 IMAGE_CLASSES = {"picture", "figure", "image", "logo", "chart", "graphic"}
@@ -33,6 +34,7 @@ def collect_regions(page, blocks, explicit_regions=()):
     A logo misclassified as text needs an explicit region; no second model runs.
     """
     width, height = page.get_size()
+    blocks = [resolve_block_type(block) for block in blocks]
     regions = [validate_region({**r, "source": "explicit"}) for r in explicit_regions]
     for block in blocks:
         if block["class"].lower() not in IMAGE_CLASSES:
@@ -49,6 +51,8 @@ def collect_regions(page, blocks, explicit_regions=()):
         if right - left < 12 or top - bottom < 12:
             continue
         if (box[2] - box[0]) * (box[3] - box[1]) > .35:
+            continue
+        if any(b["class"] == "Table" and covered_fraction(b["bbox"], box) > .65 for b in blocks):
             continue
         # Do not save the same graphic twice when a model/manual box covers it.
         if any(covered_fraction(box, r["bbox"]) > .8 for r in regions):

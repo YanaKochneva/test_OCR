@@ -256,6 +256,10 @@ def _common_prefix(left, right):
 
 
 def review_before_render(document: Document, config, out=None, client=None):
+    if document.engine.name == "rapidocr-photo":
+        from docpipe.photo_review import review_photo
+
+        return review_photo(document, config, out, client)
     started = time.monotonic()
     if out is not None:
         Path(out).mkdir(parents=True, exist_ok=True)

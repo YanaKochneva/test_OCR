@@ -98,6 +98,7 @@ class AppConfig(BaseSettings):
         env_prefix="DOCPIPE_", env_nested_delimiter="__", extra="forbid"
     )
     force_ocr: Literal["auto", "always", "never"] = "auto"
+    image_ocr: Literal["direct", "docling"] = "direct"
     default_dpi: int = Field(default=300, gt=0)
     profile: Literal["fast", "balanced", "accurate"] = "balanced"
     gpu: bool | None = None

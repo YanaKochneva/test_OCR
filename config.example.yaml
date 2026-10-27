@@ -3,6 +3,7 @@ default_dpi: 300
 profile: balanced
 gpu: null
 offline: true
+image_ocr: direct # direct OCR for photos; docling for structured document scans
 limits:
   max_file_mb: 200
   max_pages: 300

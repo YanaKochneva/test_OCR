@@ -4,7 +4,7 @@ import hashlib
 import io
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from docpipe.config import AppConfig
 from docpipe.errors import InputError
@@ -31,7 +31,7 @@ def normalize_input(path: Path, config: AppConfig) -> Path:
         frames = []
         for i in range(getattr(image, "n_frames", 1)):
             image.seek(i)
-            frame = image.convert("RGB")
+            frame = ImageOps.exif_transpose(image).convert("RGB")
             if frame.width * frame.height > config.limits.max_pixels_per_page:
                 raise InputError("Размер страницы изображения превышает лимит")
             frames.append(frame.copy())

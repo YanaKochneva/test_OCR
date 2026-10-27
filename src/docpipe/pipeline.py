@@ -114,13 +114,16 @@ def _process_page(page, index, layer, engine, config, out_dir):
             blocks = engine.analyze_page(raster.image, meta)
             from docpipe.stages.list_markers import restore_list_markers
 
-            blocks = restore_list_markers(blocks, raster.image, meta)
+            is_photo = engine.name == "rapidocr-photo"
+            if not is_photo:
+                blocks = restore_list_markers(blocks, raster.image, meta)
             from docpipe.stages.table_visual_layout import restore_table_visual_layout
 
             reader_factory = getattr(engine, "_get_refinement_reader", None)
-            blocks = restore_table_visual_layout(
-                blocks, raster.image, meta, line_reader=reader_factory() if reader_factory else None
-            )
+            if not is_photo:
+                blocks = restore_table_visual_layout(
+                    blocks, raster.image, meta, line_reader=reader_factory() if reader_factory else None
+                )
             if config.render.formatting_reference:
                 from docpipe.stages.format_standard import apply_standard, extract_standard
 
@@ -129,14 +132,18 @@ def _process_page(page, index, layer, engine, config, out_dir):
                 )
             from docpipe.stages.graphic_fields import retain_graphic_fields
 
-            blocks = retain_graphic_fields(blocks, raster.image, meta)
+            if not is_photo:
+                blocks = retain_graphic_fields(blocks, raster.image, meta)
             blocks = _save_figures(blocks, raster, out_dir, index)
             if engine.name not in {"paddleocr_vl", "ppstructure"}:
                 blocks = assign_order(blocks, raster.width_pt)
             blocks = postprocess(attach_captions(blocks), config.render.headers_footers)
             from docpipe.stages.image_fallback import fallback_unreadable
 
-            blocks = fallback_unreadable(blocks, raster, config, out_dir, index)
+            # Retain uncertain photo text for the image-grounded reread and audit.
+            # Document scans continue to use the configured regional fallback.
+            if not is_photo:
+                blocks = fallback_unreadable(blocks, raster, config, out_dir, index)
             for name in (
                 "_refinement_reader",
                 "_short_value_reader",
@@ -220,9 +227,14 @@ def parse(
             if len(document) > config.limits.max_pages:
                 raise InputError("Число страниц превышает лимит")
         statuses = analyze_pdf(pdf_path, config.text_layer)
-        eng = engine_instance or create_engine(engine, fixtures=fixtures)
-        if engine_instance is None:
-            eng.load()
+        if source.suffix.lower() != ".pdf" and engine == "docling" and config.image_ocr == "direct":
+            from docpipe.engines.photo_engine import image_engine
+
+            eng = image_engine(engine_instance)
+        else:
+            eng = engine_instance or create_engine(engine, fixtures=fixtures)
+            if engine_instance is None:
+                eng.load()
         pages = []
         with pdfium.PdfDocument(str(pdf_path)) as document:
             total = len(document)

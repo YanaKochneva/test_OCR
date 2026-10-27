@@ -76,3 +76,47 @@ def recover_unassigned_lines(
         position = max(predecessors, key=lambda i: result[i].bbox.y0) + 1 if predecessors else 0
         result.insert(position, recovered)
     return [b.model_copy(update={"order": i}) for i, b in enumerate(result)]
+
+
+def aggregate_confidence(lines):
+    """Character-weighted summary; individual weak lines remain review signals."""
+    total = sum(max(1, len(text.strip())) for text, score in lines)
+    return (
+        sum(max(1, len(text.strip())) * score for text, score in lines) / total if total else None
+    )
+
+
+def attach_confidence(blocks, raw_lines):
+    """Only associate an OCR score with matching text fully inside the region."""
+
+    def score(region, text):
+        matches = [
+            (t, s)
+            for t, b, s in raw_lines
+            if region.x0 - 1 <= b.x0
+            and region.y0 - 1 <= b.y0
+            and region.x1 + 1 >= b.x1
+            and region.y1 + 1 >= b.y1
+        ]
+
+        def normal(t):
+            return "".join(t.split()).casefold()
+
+        if matches and normal(" ".join(t for t, _ in matches)) == normal(text):
+            return aggregate_confidence(matches)
+        return None
+
+    result = []
+    for block in blocks:
+        if block.table:
+            cells = [
+                c.model_copy(update={"confidence": score(c.bbox, c.text)})
+                for c in block.table.cells
+            ]
+            block = block.model_copy(
+                update={"table": block.table.model_copy(update={"cells": cells})}
+            )
+        elif block.text and block.confidence is None:
+            block = block.model_copy(update={"confidence": score(block.bbox, block.text)})
+        result.append(block)
+    return result

@@ -258,7 +258,7 @@ class DoclingEngine(LayoutOcrEngine):
                         and 0 <= cell_box.y0 <= cell_box.y1 <= page_meta.height_pt
                     ):
                         raw_lines.append((cell.text, cell_box, float(cell.confidence)))
-            from docpipe.ocr_issues import attach_confidence
+            from docpipe.stages.ocr_recovery import attach_confidence
 
             blocks = attach_confidence(blocks, raw_lines)
             blocks = recover_unassigned_lines(blocks, raw_lines, page_meta.height_pt)

@@ -11,4 +11,3 @@ review:
   timeout_seconds: 120
   stage_timeout_seconds: 900
   max_calls: 300
-  visual_enabled: false

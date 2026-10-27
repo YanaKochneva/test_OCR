@@ -26,22 +26,10 @@ class TextLayerConfig(BaseModel):
     max_mixed_script_word_ratio: float = Field(default=0.25, ge=0, le=1)
 
 
-class FigureConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    padding_px: int = Field(default=8, ge=0)
-    merge_iou: float = Field(default=0.2, ge=0, le=1)
-    min_width_px: int = Field(default=32, ge=1)
-    min_height_px: int = Field(default=32, ge=1)
-    min_area_ratio: float = Field(default=0.001, ge=0, le=1)
-    table_fallback_to_figure: bool = True
-
-
 class RenderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     include_page_markers: bool = True
     headers_footers: Literal["keep", "drop"] = "keep"
-    positional: bool = False
-    formatting_reference: Path | None = None
     correct_page_orientation: bool = True
     docx_enabled: bool = False
     unreadable_as_image: bool = True
@@ -61,13 +49,9 @@ class ReviewConfig(BaseModel):
     timeout_seconds: int = Field(default=45, ge=1, le=300)
     max_calls: int = Field(default=40, ge=2, le=600)
     batch_chars: int = Field(default=10000, ge=200, le=12000)
+    photo_max_pages: int = Field(default=20, ge=1, le=300)
+    photo_max_side: int = Field(default=1600, ge=800, le=2400)
     stage_timeout_seconds: int = Field(default=180, ge=1, le=900)
-    visual_enabled: bool = False
-    visual_model: str | None = None
-    visual_max_pages: int = Field(default=20, ge=1, le=300)
-    visual_max_calls: int = Field(default=40, ge=1, le=600)
-    visual_max_side: int = Field(default=1600, ge=800, le=2400)
-    visual_timeout_seconds: int = Field(default=180, ge=1, le=900)
 
 
 class ApiConfig(BaseModel):
@@ -97,18 +81,13 @@ class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="DOCPIPE_", env_nested_delimiter="__", extra="forbid"
     )
-    force_ocr: Literal["auto", "always", "never"] = "auto"
     image_ocr: Literal["direct", "docling"] = "direct"
     default_dpi: int = Field(default=300, gt=0)
-    profile: Literal["fast", "balanced", "accurate"] = "balanced"
-    gpu: bool | None = None
     offline: bool = True
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
     text_layer: TextLayerConfig = Field(default_factory=TextLayerConfig)
-    figures: FigureConfig = Field(default_factory=FigureConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     review: ReviewConfig = Field(default_factory=ReviewConfig)
-    debug: bool = False
     api: ApiConfig = Field(default_factory=ApiConfig)
 
 

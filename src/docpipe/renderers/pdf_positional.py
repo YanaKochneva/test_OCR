@@ -302,21 +302,6 @@ def render(document: Document, out: Path, base_dir: Path | None = None) -> Path:
                 size,
                 bold_font if bold else regular_font,
             )
-        from docpipe.style_review import line_review
-
-        for block in page.blocks:
-            lines = list(block.lines or [])
-            if block.table:
-                lines.extend(line for cell in block.table.cells for line in (cell.lines or []))
-            for line in lines:
-                reason = line_review(line)
-                if reason:
-                    box = line.bbox
-                    pdf.highlightAnnotation(
-                        "Проверить оформление: " + reason,
-                        Rect=(box.x0, page.height_pt - box.y1, box.x1, page.height_pt - box.y0),
-                        Color=[1, 0.8, 0.25],
-                    )
         pdf.showPage()
     pdf.save()
     return out

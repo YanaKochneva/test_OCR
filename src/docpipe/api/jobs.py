@@ -10,21 +10,17 @@ import uuid
 import zipfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Callable
 
 from docpipe.config import AppConfig
 from docpipe.engines import create_engine
 from docpipe.engines.base import LayoutOcrEngine
 from docpipe.pipeline import parse
-from docpipe.quality import document_metrics, recognized_text_chars
-from docpipe.verify.checks import verify_document
 
-ProgressCallback = Callable[[int, int], None]
 logger = logging.getLogger(__name__)
 
 
 class OutputQualityError(RuntimeError):
-    """Raised when OCR yields no usable text or generated artifacts fail verification."""
+    """Raised when OCR yields no usable recognized content."""
 
 
 @dataclass
@@ -61,13 +57,6 @@ class JobManager:
         self._janitor: threading.Thread | None = None
         self._engines: dict[str, LayoutOcrEngine] = {}
         self._engine_locks: dict[str, threading.Lock] = {}
-        self.metrics = {
-            "jobs_submitted_total": 0,
-            "jobs_completed_total": 0,
-            "jobs_failed_total": 0,
-            "jobs_rejected_total": 0,
-            "jobs_cancelled_total": 0,
-        }
         self.ready = False
         self._started = False
 
@@ -108,9 +97,6 @@ class JobManager:
                 logger.exception("Cannot restore job metadata %s", metadata)
         self.cleanup_ttl()
 
-    def _increment_metric(self, name: str) -> None:
-        with self._lock:
-            self.metrics[name] = self.metrics.get(name, 0) + 1
 
     def start(self) -> None:
         """Start workers and load the configured engine before accepting requests."""
@@ -161,7 +147,6 @@ class JobManager:
                     job.finished_at = time.time()
                     job.input_path.unlink(missing_ok=True)
                     self._persist(job)
-                    self._increment_metric("jobs_cancelled_total")
             finally:
                 self._queue.task_done()
 
@@ -188,7 +173,6 @@ class JobManager:
         with self._lock:
             if len(self._jobs) >= self.config.api.max_jobs:
                 shutil.rmtree(work_dir, ignore_errors=True)
-                self._increment_metric("jobs_rejected_total")
                 raise queue.Full("Очередь и хранилище заданий заполнены")
             self._jobs[job_id] = job
         try:
@@ -197,7 +181,6 @@ class JobManager:
         except Exception:
             with self._lock:
                 self._jobs.pop(job_id, None)
-                self._increment_metric("jobs_rejected_total")
             shutil.rmtree(work_dir, ignore_errors=True)
             raise
         with self._lock:
@@ -205,7 +188,6 @@ class JobManager:
         if not accepting:
             self._cancel_queued_jobs()
             raise RuntimeError("job manager is shutting down")
-        self._increment_metric("jobs_submitted_total")
         return job
 
     def get(self, job_id: str) -> Job | None:
@@ -222,7 +204,6 @@ class JobManager:
                 job.status = "cancelled"
                 job.error = "cancelled by request"
                 job.finished_at = time.time()
-                self._increment_metric("jobs_cancelled_total")
             self._jobs.pop(job_id, None)
         shutil.rmtree(job.work_dir, ignore_errors=True)
         job.input_path.unlink(missing_ok=True)
@@ -263,7 +244,6 @@ class JobManager:
                 job.error = "cancelled during service shutdown"
                 job.finished_at = time.time()
                 job.input_path.unlink(missing_ok=True)
-                self._increment_metric("jobs_cancelled_total")
                 return
             job.status = "running"
             job.started_at = time.time()
@@ -286,7 +266,7 @@ class JobManager:
             job.document_json = json_path
             from docpipe.stages.image_fallback import has_fallback
 
-            if job.engine != "fake" and recognized_text_chars(doc) == 0 and not has_fallback(doc):
+            if doc.text_characters == 0 and not has_fallback(doc):
                 reasons = [
                     f"Страница {page.index + 1}: {warning}"
                     for page in doc.pages
@@ -298,50 +278,7 @@ class JobManager:
                 )
                 raise OutputQualityError(f"Движок {job.engine} не вернул текст. {detail}")
             doc = self._render_outputs(doc, job, out)
-            from docpipe.review import review_after_render
-
-            post_review = review_after_render(doc, self.config, out)
-            pre_path = out / "review-before.json"
-            pre_review = (
-                json.loads(pre_path.read_text(encoding="utf-8"))
-                if pre_path.exists()
-                else {"review_required": False}
-            )
-            from docpipe.style_review import write_style_review
-
-            job.review_required = (
-                write_style_review(doc, out)["review_required"]
-                or pre_review["review_required"]
-                or post_review["review_required"]
-            )
-            ocr_path = out / "review" / "issues.json"
-            if ocr_path.exists():
-                job.review_required = (
-                    job.review_required
-                    or json.loads(ocr_path.read_text("utf-8"))["review_required"]
-                )
-            verification = verify_document(out)
-            if any(
-                check["check"] == "figure_pictogram_overlap" and check["status"] == "WARN"
-                for check in verification["checks"]
-            ):
-                job.review_required = True
-            (out / "verification.json").write_text(
-                json.dumps(verification, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
-            metrics = document_metrics(doc)
-            metrics["review_required"] = job.review_required
-            metrics["verification"] = verification["result"]
-            (out / "metrics.json").write_text(
-                json.dumps(metrics, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
-            if not verification["ok"]:
-                failed_checks = [
-                    check["check"] for check in verification["checks"] if check["status"] == "FAIL"
-                ]
-                raise OutputQualityError("Output verification failed: " + ", ".join(failed_checks))
+            job.review_required = doc.review_required
             zip_path = job.work_dir / f"{job.id}.zip"
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for p in out.rglob("*"):
@@ -350,7 +287,6 @@ class JobManager:
             job.result_zip = zip_path
             job.progress = 100
             job.status = "completed"
-            self._increment_metric("jobs_completed_total")
         except Exception as exc:
             job.status = "failed"
             logger.exception("Document job %s failed", job.id)
@@ -359,7 +295,6 @@ class JobManager:
                 if isinstance(exc, OutputQualityError)
                 else "processing failed; see service logs"
             )
-            self._increment_metric("jobs_failed_total")
         finally:
             job.finished_at = time.time()
             job.input_path.unlink(missing_ok=True)
@@ -371,7 +306,7 @@ class JobManager:
     @staticmethod
     def _progress(job: Job, current: int, total: int) -> None:
         job.pages_total = total
-        # OCR completion is followed by review, rendering, checks and packaging.
+        # OCR completion is followed by text refinement, rendering and packaging.
         job.progress = min(90, int(current * 90 / total)) if total else 0
 
     def _render_outputs(self, doc, job: Job, out: Path):

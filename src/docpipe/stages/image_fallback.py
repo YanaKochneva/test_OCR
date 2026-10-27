@@ -1,8 +1,7 @@
-"""Experimental region-level raster fallback; whole source pages are forbidden."""
+"""Preserve unreadable or lost output regions as source image fragments."""
 
 import hashlib
 import html
-import json
 import math
 import re
 from collections import Counter
@@ -24,31 +23,10 @@ def has_fallback(document):
     return any(b.source_label == LABEL for p in document.pages for b in p.blocks)
 
 
-def _record(out, event):
-    path = Path(out) / "image-fallback.json"
-    report = (
-        json.loads(path.read_text(encoding="utf-8"))
-        if path.exists()
-        else {"mode": "experimental", "regions": []}
-    )
-    report["regions"].append(event)
-    report["review_required"] = True
-    path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
 def _crop(block_id, box, order, raster, out, page_index, reason, original_text):
     width, height = raster.width_pt, raster.height_pt
     area = max(0, box.x1 - box.x0) * max(0, box.y1 - box.y0)
     if area >= width * height * 0.9:
-        _record(
-            out,
-            {
-                "page": page_index + 1,
-                "region": block_id,
-                "status": "refused",
-                "reason": "whole-page raster forbidden",
-            },
-        )
         return None
     sx, sy = raster.image.width / width, raster.image.height / height
     pixel = PixelBox(
@@ -80,18 +58,6 @@ def _crop(block_id, box, order, raster, out, page_index, reason, original_text):
             width_px=pixel.x1 - pixel.x0,
             height_px=pixel.y1 - pixel.y0,
         ),
-    )
-    _record(
-        out,
-        {
-            "page": page_index + 1,
-            "region": block_id,
-            "status": "replaced",
-            "reason": reason,
-            "original_ocr_text": original_text,
-            "bbox": box.model_dump(),
-            "image": result.figure.file,
-        },
     )
     return result
 

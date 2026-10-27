@@ -124,12 +124,6 @@ def _process_page(page, index, layer, engine, config, out_dir):
                 blocks = restore_table_visual_layout(
                     blocks, raster.image, meta, line_reader=reader_factory() if reader_factory else None
                 )
-            if config.render.formatting_reference:
-                from docpipe.stages.format_standard import apply_standard, extract_standard
-
-                blocks = apply_standard(
-                    blocks, extract_standard(config.render.formatting_reference)
-                )
             from docpipe.stages.graphic_fields import retain_graphic_fields
 
             if not is_photo:
@@ -219,10 +213,6 @@ def parse(
     pdf_path = normalize_input(source, config)
     started = time.perf_counter()
     try:
-        if out_dir is not None:
-            from docpipe.ocr_issues import begin_review_run
-
-            begin_review_run(out_dir)
         with pdfium.PdfDocument(str(pdf_path)) as document:
             if len(document) > config.limits.max_pages:
                 raise InputError("Число страниц превышает лимит")
@@ -288,10 +278,6 @@ def parse(
             pages=pages,
             timings={"parse_total": time.perf_counter() - started},
         )
-        if out_dir is not None:
-            from docpipe.ocr_issues import write_ocr_review
-
-            write_ocr_review(result, config, out_dir)
         from docpipe.review import review_before_render
 
         result, _ = review_before_render(result, config, out_dir)

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 
 from docpipe.api.contracts import AgentDocument, JobStatus
@@ -131,14 +131,6 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         if not manager.ready:
             raise HTTPException(status_code=503, detail="Модели ещё не загружены")
         return {"status": "ready"}
-
-    @app.get("/metrics")
-    def metrics(x_api_key: str | None = Header(default=None)) -> PlainTextResponse:
-        authorize(x_api_key)
-        lines = ["# TYPE docpipe_jobs_total counter"]
-        for name, value in manager.metrics.items():
-            lines.append(f"docpipe_{name} {value}")
-        return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
     @app.post("/v1/jobs", status_code=202, response_model=JobStatus)
     async def create_job(

@@ -1,6 +1,5 @@
 """Shared service/CLI export with optional region raster recovery."""
 
-import json
 from pathlib import Path
 
 
@@ -17,11 +16,6 @@ def render_bundle(document, config, out, requested=(), source_path=None):
 
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    policy = {
-        "docx_enabled": config.render.docx_enabled,
-        "unreadable_as_image": config.render.unreadable_as_image,
-    }
-    (out / "output-policy.json").write_text(json.dumps(policy, indent=2), encoding="utf-8")
     if not config.render.docx_enabled:
         (out / "document.docx").unlink(missing_ok=True)
 
@@ -45,7 +39,4 @@ def render_bundle(document, config, out, requested=(), source_path=None):
             break
         document = recovered
         render(document)
-    from docpipe.ocr_issues import write_ocr_review
-
-    write_ocr_review(document, config, out)
     return document

@@ -5,8 +5,6 @@ from pathlib import Path
 
 from PIL import Image
 
-from docpipe.config import FigureConfig
-
 
 @dataclass(frozen=True)
 class PixelBox:
@@ -14,55 +12,6 @@ class PixelBox:
     y0: int
     x1: int
     y1: int
-
-
-def iou(a: PixelBox, b: PixelBox) -> float:
-    x0 = max(a.x0, b.x0)
-    y0 = max(a.y0, b.y0)
-    x1 = min(a.x1, b.x1)
-    y1 = min(a.y1, b.y1)
-    inter = max(0, x1 - x0) * max(0, y1 - y0)
-    union = (a.x1 - a.x0) * (a.y1 - a.y0) + (b.x1 - b.x0) * (b.y1 - b.y0) - inter
-    return inter / union if union else 0.0
-
-
-def merge_boxes(boxes: list[PixelBox], threshold: float) -> list[PixelBox]:
-    result: list[PixelBox] = []
-    for box in boxes:
-        merged = False
-        for i, old in enumerate(result):
-            if iou(box, old) >= threshold:
-                result[i] = PixelBox(
-                    min(box.x0, old.x0),
-                    min(box.y0, old.y0),
-                    max(box.x1, old.x1),
-                    max(box.y1, old.y1),
-                )
-                merged = True
-                break
-        if not merged:
-            result.append(box)
-    return result
-
-
-def filter_boxes(
-    boxes: list[PixelBox], image_size: tuple[int, int], config: FigureConfig, block_count: int
-) -> list[PixelBox]:
-    w, h = image_size
-    area = w * h
-    out = []
-    for b in boxes:
-        bw, bh = b.x1 - b.x0, b.y1 - b.y0
-        if (
-            bw < config.min_width_px
-            or bh < config.min_height_px
-            or bw * bh / area < config.min_area_ratio
-        ):
-            continue
-        if bw >= w and bh >= h and block_count == 0:
-            continue
-        out.append(b)
-    return out
 
 
 def crop_and_save(

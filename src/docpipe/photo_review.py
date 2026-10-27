@@ -1,11 +1,8 @@
-"""Two-pass image-grounded transcription, with auditable OCR preservation."""
+"""Two-pass photo transcription with guarded OCR replacements."""
 import base64
-import hashlib
 import io
-import json
 import re
 import time
-from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -52,8 +49,7 @@ def review_photo(document, config, out=None, client=None):
     started = time.monotonic()
     report = dict(stage="before_render", mode="source_image_transcription_and_verification",
                   status="not_requested", calls=0, corrections=[], issues=[], pages=[],
-                  review_required=True, model=config.review.visual_model or config.review.api_model)
-    original = document
+                  review_required=True, model=config.review.api_model)
     pages = list(document.pages)
     deadline = started + config.review.stage_timeout_seconds
     try:
@@ -72,14 +68,14 @@ def review_photo(document, config, out=None, client=None):
                 transport.set_deadline(deadline)
             report["status"] = "completed"
             for index, page in enumerate(pages):
-                if (index >= config.review.visual_max_pages or
-                    report["calls"] + 2 > min(config.review.max_calls, config.review.visual_max_calls) or
+                if (index >= config.review.photo_max_pages or
+                    report["calls"] + 2 > config.review.max_calls or
                     time.monotonic() >= deadline):
                     report["issues"].append({"kind": "budget_exceeded", "page": page.index + 1})
                     report["status"] = "partial"
                     break
                 with load_page_image(document.source.file, page, config.review.reread_dpi, config.limits) as image:
-                    image.thumbnail((config.review.visual_max_side, config.review.visual_max_side))
+                    image.thumbnail((config.review.photo_max_side, config.review.photo_max_side))
                     buffer = io.BytesIO()
                     image.save(buffer, "PNG")
                     raw = buffer.getvalue()
@@ -94,7 +90,7 @@ def review_photo(document, config, out=None, client=None):
                     x0, y0, x1, y1 = crop_box
                     region = [x0 / image.width, y0 / image.height, x1 / image.width, y1 / image.height]
                     with image.crop(crop_box) as crop:
-                        scale = min(3.0, config.review.visual_max_side / max(crop.size))
+                        scale = min(3.0, config.review.photo_max_side / max(crop.size))
                         enlarged = crop.resize((max(1, round(crop.width * scale)), max(1, round(crop.height * scale))))
                         try:
                             buffer = io.BytesIO()
@@ -102,20 +98,9 @@ def review_photo(document, config, out=None, client=None):
                             crop_raw = buffer.getvalue()
                         finally:
                             enlarged.close()
-                digest = hashlib.sha256(raw).hexdigest()
-                if out is not None:
-                    folder = Path(out) / "photo-review"
-                    folder.mkdir(parents=True, exist_ok=True)
-                    (folder / f"p{page.index + 1:03d}-source.png").write_bytes(raw)
-                    (folder / f"p{page.index + 1:03d}-crop.png").write_bytes(crop_raw)
                 url = ["data:image/png;base64," + base64.b64encode(data).decode("ascii") for data in (crop_raw, raw)]
-                audit = {"page": page.index + 1, "source_sha256": digest,
-                         "crop_sha256": hashlib.sha256(crop_raw).hexdigest(), "crop_region": region,
-                         "first_read": None, "verification": None, "applied": False}
-                report["pages"].append(audit)
                 report["calls"] += 1
                 reading = transport.request(INSTRUCTION, {"task": "Read the source image independently; no reference text is provided."}, PhotoReading, image_url=url)
-                audit["first_read"] = reading.model_dump()
                 if time.monotonic() >= deadline:
                     raise TimeoutError("Photo verification budget exceeded")
                 report["calls"] += 1
@@ -123,7 +108,6 @@ def review_photo(document, config, out=None, client=None):
                     INSTRUCTION + "\nAudit the proposed transcription against the source image. Correct any mismatch. "
                     "Do not approve a line merely because it is plausible. Retain uncertainty where pixels are ambiguous.",
                     {"proposed_transcription": reading.model_dump()}, PhotoReading, image_url=url)
-                audit["verification"] = verified.model_dump()
                 before = [b.text for b in page.blocks if b.text]
                 changes = []
                 blocks = []
@@ -163,7 +147,6 @@ def review_photo(document, config, out=None, client=None):
                     report["corrections"].append({"page": page.index + 1, "before": before, "after": changes})
                 else:
                     report["issues"].append({"kind": "original_ocr_preserved", "page": page.index + 1})
-                audit["applied"] = applied
     except Exception as exc:
         report["status"] = "partial"
         # Do not persist provider error bodies or credentials.
@@ -172,31 +155,5 @@ def review_photo(document, config, out=None, client=None):
     if report["status"] == "completed" and report["issues"]:
         report["status"] = "completed_with_findings"
     document = document.model_copy(update={"pages": pages, "warnings": [*document.warnings,
-        "Photo transcription requires review; see review-photo.json for source images, decisions and uncertainty."]})
-    if out is not None:
-        out = Path(out)
-        out.mkdir(parents=True, exist_ok=True)
-        (out / "document-ocr.json").write_text(original.model_dump_json(indent=2), encoding="utf-8")
-        for name in ("review-photo.json", "review-before.json"):
-            (out / name).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-        sections = ["# Визуальная проверка фотографии", "",
-                    f"Модель: {report['model']}. Статус: {report['status']}.",
-                    f"Время этапа: {report['elapsed_seconds']:.3f} с. Обращений к API: {report['calls']}.",
-                    "", "Кандидат vision-модели может содержать ошибки; непримененные строки требуют проверки."]
-        for item in report["pages"]:
-            number = item["page"]
-            source_page = next(page for page in original.pages if page.index + 1 == number)
-            sections += ["", f"## Страница {number}", "",
-                         f"Изменения применены: {'да' if item['applied'] else 'нет'}.", "",
-                         f"![Фрагмент для чтения](photo-review/p{number:03d}-crop.png)", "",
-                         "Исходный OCR:", "", "```text",
-                         "\n".join(block.text for block in source_page.blocks if block.text), "```"]
-            if item["verification"]:
-                sections += ["", "Кандидат после визуальной проверки:", "", "```text",
-                             "\n".join(line["text"] + (" [неуверенно]" if line["uncertain"] else "")
-                                       for line in item["verification"]["lines"]), "```", "",
-                             *item["verification"]["notes"]]
-        sections += ["", "## Замечания", "", "```json",
-                     json.dumps(report["issues"], ensure_ascii=False, indent=2), "```", ""]
-        (out / "review-photo.md").write_text("\n".join(sections), encoding="utf-8")
+        "Photo transcription requires review."]})
     return document, report

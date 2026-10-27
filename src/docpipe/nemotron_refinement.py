@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
-import io
-import json
 import re
 import time
 from difflib import SequenceMatcher
 from functools import lru_cache
-from pathlib import Path
 
 from rapidfuzz.distance import Levenshtein
 
@@ -95,7 +91,6 @@ def refine_document(document, config, out=None, reader=None):
 
     started = time.monotonic()
     backend = "nemotron"
-    report_name = f"review-{backend}-reread.json"
     report = {
         "stage": f"{backend}_reread",
         "model": "nvidia/Nemotron-3.5-Parse",
@@ -124,9 +119,6 @@ def refine_document(document, config, out=None, reader=None):
     changes = {}
     image = None
     current_page = None
-    cache_dir = Path(out) / f"{backend}-crops" if out is not None else None
-    if cache_dir:
-        cache_dir.mkdir(parents=True, exist_ok=True)
     try:
         for page, unit_id, text, bbox in selected:
             unit_started = time.monotonic()
@@ -150,30 +142,14 @@ def refine_document(document, config, out=None, reader=None):
                     min(image.height, round(bbox.y1 * sy) + 8),
                 )
                 with image.crop(box) as crop:
-                    buffer = io.BytesIO()
-                    crop.save(buffer, "PNG")
-                    key = hashlib.sha256(
-                        ("nvidia/Nemotron-3.5-Parse" + str(config.review.nemotron_model.resolve())).encode()
-                        + b"\0nemotron-3.5-parse-v1\0"
-                        + buffer.getvalue()
-                    ).hexdigest()
-                    cached = cache_dir / (key + ".json") if cache_dir else None
-                    if cached and cached.is_file():
-                        recognized = json.loads(cached.read_text("utf-8"))["text"]
-                    else:
-                        report["calls"] += 1
-                        recognized = reader.recognize(
-                            crop, min(remaining, config.review.timeout_seconds)
-                        )
-                        if cached:
-                            cached.write_text(
-                                json.dumps({"text": recognized}, ensure_ascii=False), "utf-8"
-                            )
+                    report["calls"] += 1
+                    recognized = reader.recognize(
+                        crop, min(remaining, config.review.timeout_seconds)
+                    )
                 edits, rejected = proposals(text, recognized)
                 item = {
                     "unit_id": unit_id,
                     "page": page.index + 1,
-                    "image_sha256": key,
                     "before": text,
                     "recognized": recognized,
                     "rejected": rejected,
@@ -190,7 +166,6 @@ def refine_document(document, config, out=None, reader=None):
                             "before": before,
                             "after": after,
                             "source": f"{backend}_ocr_reread",
-                            "image_sha256": key,
                         }
                     )
             except Exception as exc:
@@ -199,10 +174,6 @@ def refine_document(document, config, out=None, reader=None):
                      "detail": str(exc)[:300]}
                 )
                 break
-            if out is not None:
-                (Path(out) / report_name).write_text(
-                    json.dumps(report, ensure_ascii=False, indent=2), "utf-8"
-                )
     finally:
         if image is not None:
             image.close()
@@ -222,8 +193,4 @@ def refine_document(document, config, out=None, reader=None):
     report["runtime_device"] = getattr(reader, "device", None)
     report["model_path"] = str(config.review.nemotron_model.resolve())
     document = _apply(document, changes, mark_review=True)
-    if out is not None:
-        (Path(out) / report_name).write_text(
-            json.dumps(report, ensure_ascii=False, indent=2), "utf-8"
-        )
     return document, report

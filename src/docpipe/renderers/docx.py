@@ -281,7 +281,6 @@ def _append_line_runs(paragraph, line, fallback_size):
     from docpipe.renderers.fonts import font_path, require_font
 
     words = line.runs or [line]
-    comment_runs = []
     for index, word in enumerate(words):
         size = word.font_size_pt or line.font_size_pt or fallback_size
         family = word.font_family or line.font_family or FONT_FAMILY
@@ -302,7 +301,6 @@ def _append_line_runs(paragraph, line, fallback_size):
             else 1
         )
         run = paragraph.add_run(word.text)
-        comment_runs.append(run)
         run.font.name = family
         run.font.size = Pt(size)
         run.bold = word.bold
@@ -325,13 +323,6 @@ def _append_line_runs(paragraph, line, fallback_size):
                 qn("w:val"), str(round((desired - tail - font.getlength(" ") * size / 100) * 20))
             )
             space._r.get_or_add_rPr().append(tracking)
-    from docpipe.style_review import line_review
-
-    reason = line_review(line)
-    if reason and comment_runs:
-        paragraph.part.document.add_comment(
-            comment_runs, "Проверить оформление: " + reason, author="DocPipe", initials="OCR"
-        )
 
 
 def _format_table_cell(

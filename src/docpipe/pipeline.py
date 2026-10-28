@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import gc
-import hashlib
 import logging
 import math
 import time
@@ -11,16 +10,16 @@ import pypdfium2 as pdfium
 
 from docpipe.config import AppConfig
 from docpipe.engines import create_engine
-from docpipe.engines.base import PageMeta
+from docpipe.engines import PageMeta
 from docpipe.errors import InputError
-from docpipe.io.normalize import normalize_input
-from docpipe.io.textlayer import analyze_pdf
+from docpipe.input import normalize_input, sha256_file
+from docpipe.input import analyze_pdf
 from docpipe.ir import Document, Page, PageStatus, SourceInfo, SourceType
-from docpipe.render.raster import bounded_dpi, rasterize_page
-from docpipe.stages.captions import attach_captions
-from docpipe.stages.figures import PixelBox, crop_and_save
-from docpipe.stages.order import assign_order
-from docpipe.stages.postprocess import postprocess
+from docpipe.input import bounded_dpi, rasterize_page
+from docpipe.stages.layout import attach_captions
+from docpipe.stages.graphics import PixelBox, crop_and_save
+from docpipe.stages.layout import assign_order
+from docpipe.stages.layout import postprocess
 
 LOG = logging.getLogger(__name__)
 
@@ -112,19 +111,19 @@ def _process_page(page, index, layer, engine, config, out_dir):
             meta = PageMeta(index, raster.width_pt, raster.height_pt, raster.rotation, raster.dpi)
             engine.refinement_incomplete = False
             blocks = engine.analyze_page(raster.image, meta)
-            from docpipe.stages.list_markers import restore_list_markers
+            from docpipe.stages.layout import restore_list_markers
 
             is_photo = engine.name == "rapidocr-photo"
             if not is_photo:
                 blocks = restore_list_markers(blocks, raster.image, meta)
-            from docpipe.stages.table_visual_layout import restore_table_visual_layout
+            from docpipe.stages.tables import restore_table_visual_layout
 
             reader_factory = getattr(engine, "_get_refinement_reader", None)
             if not is_photo:
                 blocks = restore_table_visual_layout(
                     blocks, raster.image, meta, line_reader=reader_factory() if reader_factory else None
                 )
-            from docpipe.stages.graphic_fields import retain_graphic_fields
+            from docpipe.stages.graphics import retain_graphic_fields
 
             if not is_photo:
                 blocks = retain_graphic_fields(blocks, raster.image, meta)
@@ -203,7 +202,6 @@ def parse(
     path: str | Path,
     config: AppConfig | None = None,
     engine: str = "docling",
-    fixtures: Path | None = None,
     out_dir: Path | None = None,
     engine_instance=None,
     progress_callback=None,
@@ -218,11 +216,11 @@ def parse(
                 raise InputError("Число страниц превышает лимит")
         statuses = analyze_pdf(pdf_path, config.text_layer)
         if source.suffix.lower() != ".pdf" and engine == "docling" and config.image_ocr == "direct":
-            from docpipe.engines.photo_engine import image_engine
+            from docpipe.engines.photo import image_engine
 
             eng = image_engine(engine_instance)
         else:
-            eng = engine_instance or create_engine(engine, fixtures=fixtures)
+            eng = engine_instance or create_engine(engine)
             if engine_instance is None:
                 eng.load()
         pages = []
@@ -265,13 +263,13 @@ def parse(
                         page.close()
                 if progress_callback:
                     progress_callback(index + 1, total)
-        from docpipe.stages.repeated_margins import classify_repeated_margins
+        from docpipe.stages.layout import classify_repeated_margins
 
         pages = classify_repeated_margins(pages, config.render.headers_footers)
         result = Document(
             source=SourceInfo(
                 file=str(source),
-                sha256=_sha256(source),
+                sha256=sha256_file(source),
                 type=SourceType.PDF if source.suffix.lower() == ".pdf" else SourceType.IMAGE,
             ),
             engine=eng.info(),
@@ -287,9 +285,46 @@ def parse(
             pdf_path.unlink(missing_ok=True)
 
 
-def _sha256(path: Path) -> str:
-    value = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            value.update(chunk)
-    return value.hexdigest()
+def render_bundle(document, config, out, requested=()):
+    from shutil import copyfile
+    from docpipe.renderers.docx import render as render_docx
+    from docpipe.renderers.html import render as render_html
+    from docpipe.renderers.markdown import render as render_markdown
+    from docpipe.renderers.pdf_flow import render as render_pdf_flow
+    from docpipe.renderers.pdf_positional import render as render_pdf_positional
+    from docpipe.stages.image_fallback import fallback_pdf_losses
+
+    from docpipe.errors import EmptyDocumentError
+
+    if not any(
+        (block.text or "").strip()
+        or (block.table and any(cell.text.strip() for cell in block.table.cells))
+        for page in document.pages for block in page.blocks
+    ) and not any(block.source_label == "ocr_image_fallback" for page in document.pages for block in page.blocks):
+        reasons = [warning for page in document.pages for warning in page.warnings]
+        raise EmptyDocumentError("OCR returned no recognized content. " + "; ".join(reasons[:3]))
+
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    if not config.render.docx_enabled:
+        (out / "document.docx").unlink(missing_ok=True)
+
+    def render(doc):
+        (out / "document.json").write_text(doc.model_dump_json(indent=2), encoding="utf-8")
+        render_markdown(doc, out / "document.md")
+        render_html(doc, out / "document.html")
+        render_pdf_flow(doc, out / "document-flow.pdf", out)
+        render_pdf_positional(doc, out / "document-positional.pdf", out)
+        if "pdf-searchable" in requested:
+            copyfile(out / "document-positional.pdf", out / "document-searchable.pdf")
+        if config.render.docx_enabled:
+            render_docx(doc, out / "document.docx", out)
+
+    render(document)
+    for _ in range(2):
+        recovered, count = fallback_pdf_losses(document, config, out)
+        if not count:
+            break
+        document = recovered
+        render(document)
+    return document

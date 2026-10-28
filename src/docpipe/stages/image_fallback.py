@@ -9,8 +9,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from docpipe.ir import Block, BlockType, FigureData
-from docpipe.render.raster import rasterize_page
-from docpipe.stages.figures import PixelBox
+from docpipe.input import rasterize_page
+from docpipe.stages.graphics import PixelBox
 
 LABEL = "ocr_image_fallback"
 
@@ -86,7 +86,7 @@ def _table_html(table):
 
 
 def _replace_regions(blocks, targets, raster, out, page_index):
-    from docpipe.renderers.layout_integrity import _deduplicate
+    from docpipe.renderers.layout import _deduplicate
 
     blocks = _deduplicate(blocks)
     output = []
@@ -197,10 +197,10 @@ def fallback_pdf_losses(document, config, out):
         return document, 0
     import pypdfium2 as pdfium
 
-    from docpipe.io.normalize import normalize_input
-    from docpipe.renderers.fixed_layout import stable_document
-    from docpipe.renderers.layout_integrity import without_overlapping_ocr_echoes
-    from docpipe.renderers.page_size import a4_document
+    from docpipe.input import normalize_input
+    from docpipe.renderers.layout import stable_document
+    from docpipe.renderers.layout import without_overlapping_ocr_echoes
+    from docpipe.renderers.layout import a4_document
 
     source = Path(document.source.file)
     if not source.is_file():

@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from docpipe.render.raster import RasterPage
+from docpipe.input import RasterPage
 
 
 def sideways_text_candidate(image: Image.Image) -> bool:

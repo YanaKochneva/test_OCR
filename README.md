@@ -9,8 +9,12 @@ PP-OCRv6. Результат содержит текст, таблицы, рис
 Python 3.12+, зависимости в окружении ядра:
 
 ```sh
-python -m pip install -r requirements.txt
+python -m pip install ".[nemotron-review]"
 ```
+
+Все зависимости заданы в `pyproject.toml`. Для OCR/API без локального Nemotron
+достаточно `python -m pip install .`; дополнительный набор `nemotron-review`
+нужен только для повторного чтения этой моделью.
 
 Откройте `process_documents.ipynb`, задайте `PROJECT_ROOT`, `INPUTS` и пути
 моделей. Выполните три ячейки: настройки → подготовка → распознавание.
@@ -112,8 +116,16 @@ PDF обрабатываются Docling. Неуверенные области 
 python -m docpipe parse scan.pdf --out output/scan
 ```
 
-Исходники находятся в `src/docpipe/`: `pipeline.py` управляет распознаванием,
-`engines/` содержит OCR, `stages/` восстанавливает текст и таблицы,
-`review.py` исправляет текст, `renderers/` создаёт выходные документы, `api/`
-обслуживает запросы. Модели, окружение и результаты исключены из Git.
-Лицензии: `LICENSES.md` и `src/docpipe/assets/fonts/LICENSE-DejaVu.txt`.
+Исходники находятся в `src/docpipe/`:
+
+- `input.py` — входные файлы, изображения страниц и координаты поворота;
+- `pipeline.py` — распознавание и запуск экспорта;
+- `engines/` — Docling, RapidOCR и фотографии;
+- `stages/layout.py`, `text.py`, `tables.py`, `graphics.py`, `recognition.py` —
+  порядок блоков, текст, таблицы, рисунки и согласование повторных чтений;
+- `review.py`, `nemotron.py` — исправления распознанного текста;
+- `renderers/` — PDF, HTML, Markdown и DOCX с общей подготовкой оформления;
+- `api/` — HTTP-запросы и очередь обработки.
+
+Модели, окружение и результаты исключены из Git.
+Лицензия встроенных шрифтов: `src/docpipe/assets/fonts/LICENSE-DejaVu.txt`.

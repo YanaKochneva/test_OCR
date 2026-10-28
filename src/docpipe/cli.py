@@ -20,20 +20,17 @@ def main() -> int:
     args = parser.parse_args()
     config = load_config(args.config)
 
-    from docpipe.pipeline import parse
-    from docpipe.output import render_bundle
-    from docpipe.stages.image_fallback import has_fallback
+    from docpipe.pipeline import parse, render_bundle
+    from docpipe.errors import EmptyDocumentError
 
     args.out.mkdir(parents=True, exist_ok=True)
     document = parse(args.file, config, engine=args.engine, out_dir=args.out,
         progress_callback=lambda done, total: print(f"OCR pages: {done}/{total}", flush=True))
-    if not document.text_characters and not has_fallback(document):
-        for page in document.pages:
-            for warning in page.warnings:
-                print(warning, flush=True)
-        print("OCR returned no recognized content", flush=True)
+    try:
+        render_bundle(document, config, args.out, args.outputs)
+    except EmptyDocumentError as exc:
+        print(str(exc), flush=True)
         return 1
-    render_bundle(document, config, args.out, args.outputs, args.file)
     return 0
 
 

@@ -9,16 +9,40 @@ import time
 import uuid
 import zipfile
 from contextlib import asynccontextmanager
-from pathlib import Path
-
-from fastapi import FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
-from starlette.background import BackgroundTask
-
-from docpipe.api.contracts import AgentDocument, JobStatus
 from docpipe.api.jobs import JobManager
 from docpipe.config import AppConfig
+from docpipe.ir import Document
+from fastapi import FastAPI, File, Form, HTTPException, Header, Request, Response, UploadFile
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
+from pathlib import Path
+from pydantic import BaseModel
+from starlette.background import BackgroundTask
+from typing import Literal
+
+
+class JobStatus(BaseModel):
+    job_id: str
+    request_id: str | None
+    status: Literal["queued", "running", "completed", "failed", "cancelled"]
+    progress: int
+    pages_total: int
+    review_required: bool
+    error: str | None
+    created_at: float
+    started_at: float | None
+    finished_at: float | None
+    expires_at: float | None
+    links: dict[str, str]
+
+
+class AgentDocument(BaseModel):
+    job_id: str
+    request_id: str | None
+    review_required: bool
+    text: str
+    document: Document
+
 
 _ALLOWED_ENGINES = {"docling"}
 _ALLOWED_OUTPUTS = {"json", "md", "html", "pdf-flow", "pdf-searchable", "pdf-positional", "docx"}

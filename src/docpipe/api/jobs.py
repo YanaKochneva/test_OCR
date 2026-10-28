@@ -13,14 +13,11 @@ from pathlib import Path
 
 from docpipe.config import AppConfig
 from docpipe.engines import create_engine
-from docpipe.engines.base import LayoutOcrEngine
-from docpipe.pipeline import parse
+from docpipe.engines import LayoutOcrEngine
+from docpipe.pipeline import parse, render_bundle
+from docpipe.errors import EmptyDocumentError
 
 logger = logging.getLogger(__name__)
-
-
-class OutputQualityError(RuntimeError):
-    """Raised when OCR yields no usable recognized content."""
 
 
 @dataclass
@@ -261,24 +258,11 @@ class JobManager:
                     engine_instance=engine,
                     progress_callback=lambda current, total: self._progress(job, current, total),
                 )
-            json_path = out / "document.json"
-            json_path.write_text(doc.model_dump_json(indent=2), encoding="utf-8")
-            job.document_json = json_path
-            from docpipe.stages.image_fallback import has_fallback
-
-            if doc.text_characters == 0 and not has_fallback(doc):
-                reasons = [
-                    f"Страница {page.index + 1}: {warning}"
-                    for page in doc.pages
-                    for warning in page.warnings
-                ]
-                detail = "; ".join(reasons[:3]) or (
-                    "Движок вернул только изображения или пустые текстовые области. "
-                    "Проверьте журнал сервера распознавания."
-                )
-                raise OutputQualityError(f"Движок {job.engine} не вернул текст. {detail}")
-            doc = self._render_outputs(doc, job, out)
-            job.review_required = doc.review_required
+            doc = render_bundle(doc, self.config, out, job.outputs)
+            job.document_json = out / "document.json"
+            job.review_required = bool(doc.warnings or any(
+                page.status.value != "ok" or page.warnings for page in doc.pages
+            ))
             zip_path = job.work_dir / f"{job.id}.zip"
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for p in out.rglob("*"):
@@ -292,7 +276,7 @@ class JobManager:
             logger.exception("Document job %s failed", job.id)
             job.error = (
                 str(exc)
-                if isinstance(exc, OutputQualityError)
+                if isinstance(exc, EmptyDocumentError)
                 else "processing failed; see service logs"
             )
         finally:
@@ -308,11 +292,6 @@ class JobManager:
         job.pages_total = total
         # OCR completion is followed by text refinement, rendering and packaging.
         job.progress = min(90, int(current * 90 / total)) if total else 0
-
-    def _render_outputs(self, doc, job: Job, out: Path):
-        from docpipe.output import render_bundle
-
-        return render_bundle(doc, self.config, out, job.outputs, job.input_path)
 
     def status(self, job: Job) -> dict:
         return {

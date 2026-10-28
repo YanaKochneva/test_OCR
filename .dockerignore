@@ -2,12 +2,9 @@
 !src/
 !src/**
 !pyproject.toml
-!requirements.txt
-!constraints.txt
 !Dockerfile
 src/**/__pycache__/
 src/**/*.pyc
 !scripts/
 !scripts/download_russian_recognition.py
 !README.md
-!LICENSES.md

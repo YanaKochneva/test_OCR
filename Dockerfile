@@ -6,9 +6,9 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libxcb1 libglib2.0-0 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
-COPY constraints.txt requirements.txt pyproject.toml README.md LICENSES.md ./
+COPY pyproject.toml README.md ./
 COPY src ./src
-RUN python -m pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt \
+RUN python -m pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu . \
     && python -m pip check
 RUN python -c "from pathlib import Path; from docling.utils.model_downloader import download_models; download_models(output_dir=Path('/opt/docpipe/models'), rapidocr_models=['onnxruntime:eslav'], with_code_formula=False, with_picture_classifier=False, rapidocr_model_size='small')" \
     && chmod -R a+rX /opt/docpipe/models

@@ -14,5 +14,5 @@ class ModelError(DocpipeError):
     """Ошибка загрузки или работы модели."""
 
 
-class PageError(DocpipeError):
-    """Ошибка обработки отдельной страницы."""
+class EmptyDocumentError(DocpipeError):
+    """The OCR result contains no usable text or fallback regions."""

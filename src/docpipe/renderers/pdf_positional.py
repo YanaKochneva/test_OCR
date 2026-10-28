@@ -10,7 +10,7 @@ from reportlab.pdfgen import canvas
 from docpipe.ir import BlockType, Document
 from docpipe.renderers.fonts import find_bold_font, font_path, require_font
 from docpipe.renderers.table_layout import build_table_layout
-from docpipe.renderers.typography import TABLE_FONT_PT, text_style
+from docpipe.renderers.fonts import TABLE_FONT_PT, text_style
 
 
 def _register_fonts() -> tuple[str, str]:
@@ -250,8 +250,8 @@ def _fitted_size(text, width, height, font, preferred):
 def render(document: Document, out: Path, base_dir: Path | None = None) -> Path:
     """Reconstruct positioned pages from IR with stable typography and table grids."""
     out.parent.mkdir(parents=True, exist_ok=True)
-    from docpipe.renderers.fixed_layout import stable_document
-    from docpipe.renderers.page_size import a4_document
+    from docpipe.renderers.layout import stable_document
+    from docpipe.renderers.layout import a4_document
 
     document = stable_document(a4_document(document))
     regular_font, bold_font = _register_fonts()

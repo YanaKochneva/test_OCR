@@ -180,30 +180,5 @@ class Document(StrictModel):
     warnings: list[str] = Field(default_factory=list)
     timings: dict[str, float] = Field(default_factory=dict)
 
-    @property
-    def text_characters(self) -> int:
-        return sum(
-            len((block.text or "").strip())
-            + (sum(len(cell.text.strip()) for cell in block.table.cells) if block.table else 0)
-            for page in self.pages for block in page.blocks
-        )
-
-    @property
-    def review_required(self) -> bool:
-        if self.warnings or any(page.status != PageStatus.OK or page.warnings for page in self.pages):
-            return True
-        for page in self.pages:
-            for block in page.blocks:
-                if block.source_label == "ocr_image_fallback":
-                    return True
-                units = block.table.cells if block.table else [block]
-                for unit in units:
-                    if unit.confidence is not None and unit.confidence < 0.7:
-                        return True
-                    for line in unit.lines or []:
-                        if any(item.review_required for item in [line, *(line.runs or [])]):
-                            return True
-        return False
-
     def to_json_dict(self) -> dict[str, Any]:
         return self.model_dump(mode="json", by_alias=True)

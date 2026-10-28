@@ -10,7 +10,7 @@ from urllib.parse import quote
 from docpipe.ir import Block, BlockType, Document
 from docpipe.renderers.table_layout import build_table_layout
 from docpipe.renderers.text_layout import estimate_text_height, wrap_text
-from docpipe.renderers.typography import FONT_FAMILY, TABLE_FONT_PT, text_style
+from docpipe.renderers.fonts import FONT_FAMILY, TABLE_FONT_PT, text_style
 
 
 def _box_style(x0: float, y0: float, x1: float, y1: float) -> str:
@@ -121,8 +121,8 @@ def render(
 ) -> Path:
     """Render positioned page canvases with consistent type and real tables."""
     out.parent.mkdir(parents=True, exist_ok=True)
-    from docpipe.renderers.fixed_layout import stable_document
-    from docpipe.renderers.page_size import a4_document
+    from docpipe.renderers.layout import stable_document
+    from docpipe.renderers.layout import a4_document
 
     document = stable_document(a4_document(document))
     image_root = base_dir or out.parent

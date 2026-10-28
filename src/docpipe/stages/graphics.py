@@ -1,9 +1,64 @@
-"""Retain thin blank-field rules as individual image assets."""
+from __future__ import annotations
 
 import cv2
 import numpy as np
-
+from PIL import Image, ImageDraw
+from dataclasses import dataclass
+from docpipe.engines import PageMeta
 from docpipe.ir import BBox, Block, BlockType, FigureData
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class PixelBox:
+    x0: int
+    y0: int
+    x1: int
+    y1: int
+
+
+def crop_and_save(
+    image: Image.Image, boxes: list[PixelBox], out_dir: Path, page_no: int
+) -> list[tuple[PixelBox, Path]]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    result = []
+    for idx, b in enumerate(boxes, 1):
+        crop = image.crop((b.x0, b.y0, b.x1, b.y1))
+        try:
+            # Bounded palette counting avoids sorting every pixel of a large figure.
+            if crop.getcolors(maxcolors=256) is not None:
+                path = out_dir / f"p{page_no:03d}_fig{idx:02d}.png"
+                crop.save(path, format="PNG", optimize=True)
+            else:
+                path = out_dir / f"p{page_no:03d}_fig{idx:02d}.jpg"
+                crop.save(path, format="JPEG", quality=90)
+        finally:
+            crop.close()
+        result.append((b, path))
+    return result
+
+
+def mask_figures(image: Image.Image, boxes: list[PixelBox]) -> Image.Image:
+    out = image.copy()
+    draw = ImageDraw.Draw(out)
+    for b in boxes:
+        draw.rectangle((b.x0, b.y0, b.x1, b.y1), fill=(255, 255, 255))
+    return out
+
+
+def mask_layout_figures(image: Image.Image, blocks: list[Block], meta: PageMeta) -> Image.Image:
+    """Exclude illustrations from the additional text pass, preserving assets."""
+    sx, sy = image.width / meta.width_pt, image.height / meta.height_pt
+    boxes = []
+    for block in blocks:
+        if block.type != BlockType.FIGURE:
+            continue
+        box = block.bbox
+        x0, y0 = max(0, int(box.x0 * sx)), max(0, int(box.y0 * sy))
+        x1, y1 = min(image.width, int(box.x1 * sx)), min(image.height, int(box.y1 * sy))
+        if x1 > x0 and y1 > y0:
+            boxes.append(PixelBox(x0, y0, x1, y1))
+    return mask_figures(image, boxes) if boxes else image
 
 
 def retain_graphic_fields(blocks, image, meta):
@@ -69,7 +124,7 @@ def retain_graphic_fields(blocks, image, meta):
     fields = [b.bbox for b in output if b.source_label == "graphic_field"]
 
     def reserve_gaps(lines):
-        from docpipe.stages.table_visual_layout import split_at_visual_lines
+        from docpipe.stages.tables import split_at_visual_lines
 
         result = []
         for line in lines or []:

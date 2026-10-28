@@ -8,7 +8,7 @@ from typing import Any
 
 from PIL import Image
 
-from docpipe.engines.base import LayoutOcrEngine, PageMeta
+from docpipe.engines import LayoutOcrEngine, PageMeta
 from docpipe.errors import DependencyError, ModelError
 from docpipe.ir import (
     BBox,
@@ -133,7 +133,7 @@ class DoclingEngine(LayoutOcrEngine):
         # Docling's IMAGE pipeline is the one used by analyze_page().
         try:
             self._converter.initialize_pipeline(InputFormat.IMAGE)
-            from docpipe.engines.russian_recognition import configure_padding
+            from docpipe.engines.rapidocr import configure_padding
 
             for pipeline in self._converter.initialized_pipelines.values():
                 configure_padding(pipeline.ocr_model.reader)
@@ -241,7 +241,7 @@ class DoclingEngine(LayoutOcrEngine):
 
             from types import SimpleNamespace
 
-            from docpipe.stages.ocr_recovery import recover_unassigned_lines
+            from docpipe.stages.text import recover_unassigned_lines
 
             raw_lines = []
             for parsed_page in getattr(result, "pages", []):
@@ -258,13 +258,13 @@ class DoclingEngine(LayoutOcrEngine):
                         and 0 <= cell_box.y0 <= cell_box.y1 <= page_meta.height_pt
                     ):
                         raw_lines.append((cell.text, cell_box, float(cell.confidence)))
-            from docpipe.stages.ocr_recovery import attach_confidence
+            from docpipe.stages.text import attach_confidence
 
             blocks = attach_confidence(blocks, raw_lines)
             blocks = recover_unassigned_lines(blocks, raw_lines, page_meta.height_pt)
             if os.getenv("DOCPIPE_OCR_LINE_REFINEMENT", "1") == "1":
-                from docpipe.stages.masking import mask_layout_figures
-                from docpipe.stages.text_refinement import refine_text_blocks
+                from docpipe.stages.graphics import mask_layout_figures
+                from docpipe.stages.text import refine_text_blocks
 
                 text_image = (
                     mask_layout_figures(image, blocks, page_meta)
@@ -302,11 +302,11 @@ class DoclingEngine(LayoutOcrEngine):
                         text_image.close()
                 blocks = self._refine_table_cells(blocks, image, page_meta)
                 if os.getenv("DOCPIPE_OCR_TABLE_RECONCILIATION", "1") == "1":
-                    from docpipe.stages.table_reconciliation import reconcile_table_lines
+                    from docpipe.stages.tables import reconcile_table_lines
 
                     blocks = reconcile_table_lines(blocks, raw_lines)
 
-            from docpipe.stages.text_duplicates import remove_text_duplicates
+            from docpipe.stages.layout import remove_text_duplicates
 
             blocks = remove_text_duplicates(blocks)
             return [block.model_copy(update={"order": index}) for index, block in enumerate(blocks)]
@@ -316,7 +316,7 @@ class DoclingEngine(LayoutOcrEngine):
         from rapidfuzz.distance import Levenshtein
         from rapidocr.utils.typings import LangRec, ModelType, OCRVersion
 
-        from docpipe.engines.safe_rapidocr import RapidOCR
+        from docpipe.engines.rapidocr import RapidOCR
 
         if self.languages[0] not in {"cyrillic", "eslav"}:
             return False
@@ -370,7 +370,7 @@ class DoclingEngine(LayoutOcrEngine):
     def _get_refinement_reader(self):
         from rapidocr.utils.typings import LangRec, ModelType, OCRVersion
 
-        from docpipe.engines.safe_rapidocr import RapidOCR
+        from docpipe.engines.rapidocr import RapidOCR
 
         if self._refinement_reader is None:
             params = {
@@ -383,7 +383,7 @@ class DoclingEngine(LayoutOcrEngine):
                 "Rec.lang_type": LangRec(self.languages[0]),
                 "Global.text_score": 0.5,
             }
-            from docpipe.engines.russian_recognition import configure_padding, recognition_params
+            from docpipe.engines.rapidocr import configure_padding, recognition_params
 
             params.update(recognition_params())
             self._refinement_reader = configure_padding(RapidOCR(params=params))
@@ -407,7 +407,7 @@ class DoclingEngine(LayoutOcrEngine):
         """Recognize horizontal ink bands missed by full-page detection."""
         from rapidocr.utils.typings import LangRec, ModelType, OCRVersion
 
-        from docpipe.engines.safe_rapidocr import RapidOCR
+        from docpipe.engines.rapidocr import RapidOCR
 
         self._get_refinement_reader()
         self._refinement_reader.context = dict(
@@ -422,7 +422,7 @@ class DoclingEngine(LayoutOcrEngine):
             getattr(self, "_has_measured_cell_crop", False)
             and os.getenv("DOCPIPE_OCR_CLEAN_CELL_BORDERS", "0") == "1"
         ):
-            from docpipe.stages.cell_borders import clean_proven_cell_borders
+            from docpipe.stages.tables import clean_proven_cell_borders
 
             image = clean_proven_cell_borders(image)
         dark = np.asarray(image.convert("L")) < 170
@@ -504,13 +504,13 @@ class DoclingEngine(LayoutOcrEngine):
             text = result.txts[0].strip() if result.txts else ""
             score = float(result.scores[0]) if result.txts else 0.0
             if os.getenv("DOCPIPE_OCR_WORD_PASS", "0") == "1" and score < 0.95 and "\\" not in text:
-                from docpipe.stages.word_refinement import recognize_separated_words
+                from docpipe.stages.text import recognize_separated_words
 
                 word_result = recognize_separated_words(crop, self._refinement_reader)
                 if word_result is not None and word_result[1] > score + 0.02:
                     text, score = word_result
             if os.getenv("DOCPIPE_OCR_CONSENSUS", "1") == "1":
-                from docpipe.stages.recognition_consensus import recognize_with_consensus
+                from docpipe.stages.recognition import recognize_with_consensus
 
                 decision = recognize_with_consensus(crop, self._refinement_reader, (text, score))
                 text, score = decision.text, decision.confidence
@@ -523,7 +523,7 @@ class DoclingEngine(LayoutOcrEngine):
                         top,
                         score,
                     )
-            from docpipe.stages.word_refinement import refine_mixed_words
+            from docpipe.stages.text import refine_mixed_words
 
             alternate_corroborated = False
             if (
@@ -548,7 +548,7 @@ class DoclingEngine(LayoutOcrEngine):
                             "Global.text_score": 0.4,
                         }
                     )
-                from docpipe.stages.alternate_recognition import recover_uncertain_line
+                from docpipe.stages.recognition import recover_uncertain_line
 
                 self._short_value_reader.context = dict(
                     self._refinement_reader.context, stage="alternate_line"
@@ -560,7 +560,7 @@ class DoclingEngine(LayoutOcrEngine):
 
             def word_reader(word_image, **kwargs):
                 primary = self._refinement_reader(word_image, **kwargs)
-                from docpipe.stages.word_refinement import is_mixed_word, select_word_result
+                from docpipe.stages.text import is_mixed_word, select_word_result
 
                 recheck = os.getenv("DOCPIPE_OCR_LATIN_RECHECK", "1") == "1"
                 if (
@@ -596,7 +596,7 @@ class DoclingEngine(LayoutOcrEngine):
 
             text = refine_mixed_words(crop, text, word_reader)
             if "\\" in text:
-                from docpipe.stages.path_recognition import recognize_path_components
+                from docpipe.stages.recognition import recognize_path_components
 
                 path_result = recognize_path_components(crop, self._refinement_reader)
                 if path_result is not None:
@@ -613,7 +613,7 @@ class DoclingEngine(LayoutOcrEngine):
                     self._cyrillic_reader = self._get_refinement_reader()
                 alternative = self._cyrillic_reader(crop, use_det=False, use_cls=False)
                 if alternative.txts and float(alternative.scores[0]) >= 0.85:
-                    from docpipe.stages.mixed_scripts import choose_path_candidate
+                    from docpipe.stages.recognition import choose_path_candidate
 
                     selected = choose_path_candidate(text, alternative.txts[0].strip())
                     if selected != text:
@@ -653,7 +653,7 @@ class DoclingEngine(LayoutOcrEngine):
                     self._refinement_reader.context, stage="short_value"
                 )
                 alternate = self._short_value_reader(crop, use_det=False, use_cls=False)
-                from docpipe.stages.short_value_consensus import corroborates_short_value
+                from docpipe.stages.recognition import corroborates_short_value
 
                 corroborated = corroborates_short_value(text, score, alternate)
                 if corroborated:
@@ -698,7 +698,7 @@ class DoclingEngine(LayoutOcrEngine):
                 result.append(block)
                 continue
             if os.getenv("DOCPIPE_OCR_VERIFIED_GRID", "1") == "1":
-                from docpipe.stages.table_geometry import rebuild_verified_grid
+                from docpipe.stages.tables import rebuild_verified_grid
 
                 repaired = rebuild_verified_grid(block, image, meta)
                 if repaired is not block:
@@ -710,16 +710,16 @@ class DoclingEngine(LayoutOcrEngine):
                     )
                 block = repaired
             if os.getenv("DOCPIPE_OCR_MISSING_CELL_GRID", "0") == "1":
-                from docpipe.stages.table_coverage import materialize_missing_cells
+                from docpipe.stages.tables import materialize_missing_cells
 
                 block = materialize_missing_cells(block, image, meta)
             cells = []
-            from docpipe.stages.table_geometry import measured_cell_boxes
+            from docpipe.stages.tables import measured_cell_boxes
 
             measured = measured_cell_boxes(block, image, meta)
             reading = {}
             if not measured and os.getenv("DOCPIPE_OCR_ADAPTIVE_CELL_CROPS", "1") == "1":
-                from docpipe.stages.table_geometry import adaptive_reading_boxes
+                from docpipe.stages.tables import adaptive_reading_boxes
 
                 reading = adaptive_reading_boxes(block, image, meta)
             for cell in block.table.cells:
@@ -757,7 +757,7 @@ class DoclingEngine(LayoutOcrEngine):
                     self._diagnostic_cell = None
                     self._diagnostic_cell_box = None
                 candidate = " ".join(t for t, b, s in lines)
-                from docpipe.stages.cell_recovery import (
+                from docpipe.stages.tables import (
                     accepts_cell_candidate,
                     detected_cell_text,
                     equivalent_cell_words,
@@ -816,10 +816,10 @@ class DoclingEngine(LayoutOcrEngine):
                     and candidate
                     and similarity >= 0.8
                 ):
-                    from docpipe.stages.text_refinement import merge_without_deletions
+                    from docpipe.stages.text import merge_without_deletions
 
                     candidate = merge_without_deletions(cell.text, candidate)
-                from docpipe.stages.cell_recovery import preserves_cell_values
+                from docpipe.stages.tables import preserves_cell_values
 
                 if (
                     confirmed and preserves_cell_values(cell.text, candidate)
@@ -1213,7 +1213,7 @@ class DoclingEngine(LayoutOcrEngine):
 
         if "mode" not in kwargs and "force_full_page_ocr" in params:
             kwargs["force_full_page_ocr"] = True
-        from docpipe.engines.russian_recognition import model_files, recognition_params
+        from docpipe.engines.rapidocr import model_files, recognition_params
 
         model, keys = model_files()
         for required in ("rec_model_path", "rec_keys_path", "rapidocr_params"):

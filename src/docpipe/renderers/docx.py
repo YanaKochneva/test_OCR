@@ -16,7 +16,7 @@ from docx.text.paragraph import Paragraph
 from docpipe.ir import Block, BlockType, Document, Page
 from docpipe.renderers.table_layout import build_table_layout
 from docpipe.renderers.text_layout import wrap_text
-from docpipe.renderers.typography import (
+from docpipe.renderers.fonts import (
     BODY_FONT_PT,
     BODY_LINE_SPACING,
     FONT_FAMILY,
@@ -591,8 +591,8 @@ def _add_block(
 def render(document: Document, out: Path, base_dir: Path | None = None) -> Path:
     """Create a page-faithful DOCX with objects anchored at their IR coordinates."""
     out.parent.mkdir(parents=True, exist_ok=True)
-    from docpipe.renderers.fixed_layout import stable_document
-    from docpipe.renderers.page_size import a4_document
+    from docpipe.renderers.layout import stable_document
+    from docpipe.renderers.layout import a4_document
 
     document = stable_document(a4_document(document))
     base = base_dir or out.parent

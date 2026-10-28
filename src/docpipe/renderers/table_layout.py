@@ -139,7 +139,7 @@ def build_table_layout(
     # Native tables may grow to fit their contents. Reserve that height in all
     # renderers so later rows and page objects cannot cover the cell text.
     from docpipe.renderers.text_layout import estimate_text_height, wrap_text
-    from docpipe.renderers.typography import TABLE_FONT_PT
+    from docpipe.renderers.fonts import TABLE_FONT_PT
 
     font_size = TABLE_FONT_PT if font_size_pt is None else font_size_pt
 

@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from urllib.request import urlopen
 
-from docpipe.engines.russian_recognition import MODEL_REPO, MODEL_REVISION
+from docpipe.engines.rapidocr import MODEL_REPO, MODEL_REVISION
 
 
 def main():

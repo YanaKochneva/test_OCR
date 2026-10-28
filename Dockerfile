@@ -12,9 +12,8 @@ RUN python -m pip install --no-cache-dir --extra-index-url https://download.pyto
     && python -m pip check
 RUN python -c "from pathlib import Path; from docling.utils.model_downloader import download_models; download_models(output_dir=Path('/opt/docpipe/models'), rapidocr_models=['onnxruntime:eslav'], with_code_formula=False, with_picture_classifier=False, rapidocr_model_size='small')" \
     && chmod -R a+rX /opt/docpipe/models
-COPY scripts/download_russian_recognition.py ./scripts/download_russian_recognition.py
-RUN python scripts/download_russian_recognition.py /opt/docpipe/ru-rec \
-    && python -c "from rapidocr import RapidOCR; from rapidocr.utils.typings import OCRVersion, ModelType, LangRec; [RapidOCR(params={'Det.ocr_version':OCRVersion.PPOCRV5,'Det.model_type':ModelType.MOBILE,'Rec.ocr_version':OCRVersion.PPOCRV5,'Rec.model_type':ModelType.MOBILE,'Rec.lang_type':lang}) for lang in (LangRec.ESLAV, LangRec.LATIN)]" \
+COPY models/ppocrv6-medium-ru/model.onnx models/ppocrv6-medium-ru/rec_keys.txt /opt/docpipe/ru-rec/
+RUN python -c "from rapidocr import RapidOCR; from rapidocr.utils.typings import OCRVersion, ModelType, LangRec; [RapidOCR(params={'Det.ocr_version':OCRVersion.PPOCRV5,'Det.model_type':ModelType.MOBILE,'Rec.ocr_version':OCRVersion.PPOCRV5,'Rec.model_type':ModelType.MOBILE,'Rec.lang_type':lang}) for lang in (LangRec.ESLAV, LangRec.LATIN)]" \
     && chmod -R a+rX /opt/docpipe \
     && mkdir -p /app/data/jobs && chown -R docpipe:docpipe /app/data
 ENV DOCPIPE_RU_REC_MODEL_DIR=/opt/docpipe/ru-rec DOCLING_ARTIFACTS_PATH=/opt/docpipe/models HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1

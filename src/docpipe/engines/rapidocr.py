@@ -11,10 +11,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
-MODEL_REPO = "vladlinv/PP-OCRv6_medium_rec_ru_onnx"
-MODEL_REVISION = "dff15ea4a253e702786597894b1d36fa8bfed7b1"
-
-
 def model_files():
     folder = Path(
         os.getenv(
@@ -26,7 +22,7 @@ def model_files():
     if not model.is_file() or not keys.is_file():
         raise ModelError(
             f"PP-OCRv6 Medium RU is not installed in {folder}. "
-            "Run scripts/download_russian_recognition.py explicitly; no automatic download is performed."
+            "Place model.onnx and rec_keys.txt there or set DOCPIPE_RU_REC_MODEL_DIR to their directory."
         )
     return model, keys
 

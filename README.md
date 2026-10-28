@@ -31,12 +31,7 @@ Notebook использует Python текущего ядра; пакеты и 
   Повторное чтение включается настройкой `NEMOTRON_ENABLED` в notebook;
   устройство задаётся через `NEMOTRON_DEVICE` (`cpu`, `cuda`, `auto`).
 
-Подготовка русской модели и Nemotron:
-
-```sh
-python scripts/download_russian_recognition.py
-python scripts/download_nemotron.py
-```
+Используются уже скачанные локальные модели.
 
 ## Docker API
 
@@ -46,7 +41,10 @@ docker compose --env-file .env -f deploy/docker-compose.yml up --build -d
 ```
 
 В PowerShell используйте `Copy-Item .env.example .env`.
-Сборка скачивает зависимости и OCR-модели. После запуска OCR работает локально
+Сборка копирует русскую модель из `models/ppocrv6-medium-ru/`;
+эта папка с `model.onnx` и `rec_keys.txt` должна быть на машине сборки.
+Зависимости и остальные модели Docling/RapidOCR скачиваются при сборке.
+После запуска OCR работает локально
 на CPU. Порт по умолчанию: `127.0.0.1:8000`.
 
 Прямая обработка одного или нескольких файлов:

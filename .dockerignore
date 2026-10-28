@@ -5,6 +5,8 @@
 !Dockerfile
 src/**/__pycache__/
 src/**/*.pyc
-!scripts/
-!scripts/download_russian_recognition.py
+!models/
+!models/ppocrv6-medium-ru/
+!models/ppocrv6-medium-ru/model.onnx
+!models/ppocrv6-medium-ru/rec_keys.txt
 !README.md

@@ -150,6 +150,7 @@ class Page(StrictModel):
     size_px: tuple[int, int]
     status: PageStatus
     text_layer: TextLayerStatus
+    receipts: list[dict[str, Any]] = Field(default_factory=list)
     blocks: list[Block] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 

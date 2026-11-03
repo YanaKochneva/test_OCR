@@ -94,6 +94,9 @@ def _replace_regions(blocks, targets, raster, out, page_index):
     changes = 0
     order = max((b.order for b in blocks), default=-1) + 1
     for block in blocks:
+        if block.source_label == "receipt_text":
+            output.append(block)
+            continue
         if (block.id, None) in targets and not block.figure:
             image = _crop(
                 block.id,
@@ -146,6 +149,8 @@ def fallback_unreadable(blocks, raster, config, out, page_index):
         return blocks
     targets = {}
     for block in blocks:
+        if block.source_label == "receipt_text":
+            continue
         if block.figure:
             continue
         if block.table:

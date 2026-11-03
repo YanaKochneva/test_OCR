@@ -54,6 +54,15 @@ class ReviewConfig(BaseModel):
     stage_timeout_seconds: int = Field(default=180, ge=1, le=900)
 
 
+class ReceiptConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = True
+    scout_max_side: int = Field(default=1800, ge=800, le=4000)
+    max_receipts_per_page: int = Field(default=8, ge=1, le=30)
+    max_numeric_lines: int = Field(default=100, ge=1, le=500)
+    min_numeric_confidence: float = Field(default=0.9, ge=0, le=1)
+
+
 class ApiConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     workers: int = Field(default=1, ge=1, le=64)
@@ -86,6 +95,7 @@ class AppConfig(BaseSettings):
     offline: bool = True
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
     text_layer: TextLayerConfig = Field(default_factory=TextLayerConfig)
+    receipts: ReceiptConfig = Field(default_factory=ReceiptConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     review: ReviewConfig = Field(default_factory=ReviewConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)

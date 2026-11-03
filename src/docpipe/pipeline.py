@@ -131,6 +131,21 @@ def _process_page(page, index, layer, engine, config, out_dir):
             if engine.name not in {"paddleocr_vl", "ppstructure"}:
                 blocks = assign_order(blocks, raster.width_pt)
             blocks = postprocess(attach_captions(blocks), config.render.headers_footers)
+            receipts = []
+            if config.receipts.enabled:
+                from docpipe.stages.receipts import process_receipts
+                try:
+                    receipts, receipt_warnings = process_receipts(raster, index, engine, config, out_dir)
+                    from docpipe.stages.receipts import apply_receipt_readings
+                    blocks = apply_receipt_readings(blocks, receipts, raster)
+                    warnings.extend(receipt_warnings)
+                    if any(r["review_required"] for r in receipts):
+                        warnings.append("Receipt numbers require review; see receipts.json")
+                except Exception as exc:
+                    LOG.exception("Receipt processing failed on page %s", index + 1)
+                    warnings.append(f"Receipt processing incomplete: {type(exc).__name__}: {exc!r}")
+                    engine.refinement_incomplete = True
+
             from docpipe.stages.image_fallback import fallback_unreadable
 
             # Retain uncertain photo text for the image-grounded reread and audit.
@@ -150,6 +165,7 @@ def _process_page(page, index, layer, engine, config, out_dir):
                     warnings.extend(f"Unread OCR refinement: {event!r}" for event in failures)
             return Page(
                 index=index,
+                receipts=receipts,
                 width_pt=raster.width_pt,
                 height_pt=raster.height_pt,
                 rotation=raster.rotation,
@@ -279,6 +295,9 @@ def parse(
         from docpipe.review import review_before_render
 
         result, _ = review_before_render(result, config, out_dir)
+        if out_dir is not None:
+            from docpipe.stages.receipts import write_report
+            write_report(result, out_dir)
         return result
     finally:
         if pdf_path != source:
@@ -310,6 +329,8 @@ def render_bundle(document, config, out, requested=()):
         (out / "document.docx").unlink(missing_ok=True)
 
     def render(doc):
+        from docpipe.stages.receipts import write_report
+        write_report(doc, out)
         (out / "document.json").write_text(doc.model_dump_json(indent=2), encoding="utf-8")
         render_markdown(doc, out / "document.md")
         render_html(doc, out / "document.html")

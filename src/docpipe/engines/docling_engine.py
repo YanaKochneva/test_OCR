@@ -49,6 +49,63 @@ class DoclingEngine(LayoutOcrEngine):
         self._latin_reader = None
         self._short_value_reader = None
 
+
+    @staticmethod
+    def _configure_local_heron() -> None:
+        """
+        Configure Docling 2.140.0 to load the Heron layout model
+        directly from its existing read-only directory.
+
+        Does not copy, move, download or modify model files.
+        """
+        from docling.models.inference_engines.common.hf_vision_base import (
+            HfVisionModelMixin,
+        )
+
+        heron_value = os.getenv("DOCPIPE_DOCLING_HERON_PATH")
+
+        if not heron_value:
+            return
+
+        heron_path = Path(heron_value).expanduser().resolve()
+
+        if not heron_path.is_dir():
+            raise ModelError(
+                f"Local Heron directory does not exist: {heron_path}"
+            )
+
+        required_files = (
+            "config.json",
+            "preprocessor_config.json",
+        )
+
+        missing = [
+            name
+            for name in required_files
+            if not (heron_path / name).is_file()
+        ]
+
+        if missing:
+            raise ModelError(
+                f"Heron model directory is incomplete: {heron_path}. "
+                f"Missing: {', '.join(missing)}"
+            )
+
+        original = HfVisionModelMixin._resolve_model_folder
+
+        if getattr(original, "_docpipe_heron_override", False):
+            return
+
+        def resolve_model_folder(self, repo_id, revision):
+            if repo_id == "docling-project/docling-layout-heron":
+                return heron_path
+
+            return original(self, repo_id, revision)
+
+        resolve_model_folder._docpipe_heron_override = True
+
+        HfVisionModelMixin._resolve_model_folder = resolve_model_folder
+
     def load(self) -> None:
         try:
             from docling.datamodel.base_models import InputFormat
@@ -115,6 +172,9 @@ class DoclingEngine(LayoutOcrEngine):
 
         if hasattr(pipeline_options, "generate_picture_images"):
             pipeline_options.generate_picture_images = False
+
+        # Resolve Heron directly from its existing read-only directory.
+        self._configure_local_heron()
 
         format_option = PdfFormatOption(pipeline_options=pipeline_options)
         image_format_option = ImageFormatOption(pipeline_options=pipeline_options)

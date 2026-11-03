@@ -317,7 +317,9 @@ def prepare_layout(document):
                 )
             box = block.bbox
             # Thin rules are intentional form fields, not occupied text rectangles.
-            obstacle = block.type.value != "figure" or box.y1 - box.y0 > 3
+            # Receipt lines already have image-grounded positions and sizes.
+            # Moving them around stamps/QR figures detaches totals from amounts.
+            obstacle = block.source_label != "receipt_text" and (block.type.value != "figure" or box.y1 - box.y0 > 3)
             height = box.y1 - box.y0
             if block.lines:
                 height = max(
